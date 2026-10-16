@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from conftest import _empty_every_table
+from conftest import _start_a_test
 
 from app import advisor, chat, tools
 
@@ -86,7 +86,7 @@ def _by_chat_and_by_form(client, monkeypatch, arguments: dict, form) -> list[dic
     card = _draw(client, monkeypatch, **arguments)
     assert _confirm(client, monkeypatch, card).status_code == 200
     by_chat = _goals(client)
-    _empty_every_table()
+    _start_a_test()
     form(client, _setup(client))
     assert by_chat == _goals(client)
     return by_chat

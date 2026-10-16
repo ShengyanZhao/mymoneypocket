@@ -25,7 +25,7 @@ import datetime
 import json
 
 import pytest
-from conftest import _empty_every_table
+from conftest import _start_a_test
 
 from app import advisor, crud, dated, prices
 from app.database import SessionLocal
@@ -188,7 +188,7 @@ def test_a_new_amount_is_the_pac_forms_save_and_the_next_occurrence_buys_with_it
     market("2026-10-16")
     bought_by_chat = _catch_up(client)
 
-    _empty_every_table()
+    _start_a_test()
     market("2026-10-11")
     ids = _setup(client)
     plan = client.get(f"/api/accumulation-plans/{ids['plan']}").json()

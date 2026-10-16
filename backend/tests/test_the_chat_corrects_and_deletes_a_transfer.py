@@ -25,7 +25,7 @@ import datetime
 import json
 
 import pytest
-from conftest import _empty_every_table
+from conftest import _start_a_test
 
 from app import advisor, fx
 
@@ -154,7 +154,7 @@ def _by_chat_and_by_form(client, monkeypatch, setup, arguments: dict, form) -> l
     assert _decide(client, monkeypatch, card).status_code == 200
     by_chat = _rows(client)
 
-    _empty_every_table()
+    _start_a_test()
     form(client, setup(client))
     by_form = _rows(client)
 

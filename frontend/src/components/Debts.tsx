@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { tOpt, useT } from "../i18n/index.ts";
 import {
   createBalance,
   createLiability,
@@ -33,9 +34,11 @@ import { BALANCE, DEBT, marks, refusal } from "./required";
 
 const KINDS = ["", "mortgage", "personal_loan", "auto_loan", "student_loan", "credit_card", "other"];
 
-// "personal_loan" -> "personal loan"
-function prettyKind(s: string | null): string | null {
-  return s ? s.replace(/_/g, " ") : s;
+/** A stored kind code in the reader's words ("personal_loan" -> "personal
+    loan" in English, 个人贷款 in Chinese); an unknown one is shown as stored
+    rather than dropped. */
+function kindLabel(s: string | null): string | null {
+  return s ? (tOpt(`debts.kind.${s}`) ?? s.replace(/_/g, " ")) : null;
 }
 
 /* Which debt is open is App's state, so the chat can be told which one "this"
@@ -50,10 +53,11 @@ export default function Debts({
   onLiability: (l: Liability | null) => void;
 }) {
   const checked = useReopened(liability, getLiability, onLiability);
+  const tr = useT();
   if (!checked) return null;
 
   const crumbs: Crumb[] = [
-    { label: "Debts", active: !liability, onClick: () => onLiability(null) },
+    { label: tr("nav.pages.debts"), active: !liability, onClick: () => onLiability(null) },
   ];
   if (liability) crumbs.push({ label: liability.name, active: true, onClick: () => {} });
 
@@ -70,6 +74,7 @@ export default function Debts({
 }
 
 function DebtsLevel({ onSelect }: { onSelect: (l: Liability) => void }) {
+  const tr = useT();
   const [items, setItems] = useState<Liability[]>([]);
   const [assets, setAssets] = useState<RealAsset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,7 +109,7 @@ function DebtsLevel({ onSelect }: { onSelect: (l: Liability) => void }) {
       setAssets(ras);
       setBase(b.base_currency);
     } catch (err) {
-      setError(apiError(err, "Could not reach the backend. Is it running on :8000?"));
+      setError(apiError(err, tr("debts.backendUnreachable")));
     } finally {
       setLoading(false);
     }
@@ -150,21 +155,21 @@ function DebtsLevel({ onSelect }: { onSelect: (l: Liability) => void }) {
       reset();
       await load();
     } catch (err) {
-      setFormError(apiError(err, "Save failed."));
+      setFormError(apiError(err, tr("common.saveFailed")));
     } finally {
       setSubmitting(false);
     }
   }
 
   async function remove(l: Liability) {
-    if (!window.confirm(`Delete "${l.name}"? This also removes its balance history.`)) return;
+    if (!window.confirm(tr("debts.deleteConfirm", { name: l.name }))) return;
     setError(null);
     try {
       await deleteLiability(l.id);
       if (editId === l.id) reset();
       await load();
     } catch (err) {
-      setError(apiError(err, "Delete failed."));
+      setError(apiError(err, tr("debts.deleteFailed")));
     }
   }
 
@@ -176,40 +181,40 @@ function DebtsLevel({ onSelect }: { onSelect: (l: Liability) => void }) {
   function debtSubtitle(l: Liability): string | undefined {
     const parts: string[] = [];
     const linked = assetName(l.real_asset_id);
-    if (linked) parts.push(`finances ${linked}`);
-    if (l.interest_rate != null) parts.push(`${l.interest_rate}%/yr`);
+    if (linked) parts.push(tr("debts.finances", { name: linked }));
+    if (l.interest_rate != null) parts.push(tr("debts.ratePerYear", { rate: l.interest_rate }));
     return parts.length ? parts.join(" · ") : undefined;
   }
 
   return (
     <Section
-      title="Debts"
-      hint="Mortgage, loans… Net worth subtracts the latest balance of each. Link a mortgage to its asset to see your equity."
+      title={tr("nav.pages.debts")}
+      hint={tr("debts.hint")}
     >
       <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
-        <input className={inputClass} aria-label="Name" {...marks(DEBT, "name")} value={name} onChange={(e) => setName(e.target.value)} />
+        <input className={inputClass} aria-label={tr("debts.name")} {...marks(DEBT, "name")} value={name} onChange={(e) => setName(e.target.value)} />
         <select className={inputClass} value={kind} onChange={(e) => setKind(e.target.value)}>
-          {KINDS.map((k) => (<option key={k} value={k}>{prettyKind(k) || "kind…"}</option>))}
+          {KINDS.map((k) => (<option key={k} value={k}>{k ? (kindLabel(k) ?? k) : tr("debts.kindBlank")}</option>))}
         </select>
-        <input className={inputClass + " w-28"} type="number" step="0.01" placeholder="Rate %/yr" value={rate} onChange={(e) => setRate(e.target.value)} />
+        <input className={inputClass + " w-28"} type="number" step="0.01" placeholder={tr("debts.ratePlaceholder")} value={rate} onChange={(e) => setRate(e.target.value)} />
         <input
           className={inputClass + " w-20"}
-          placeholder="currency"
+          placeholder={tr("debts.currency")}
           {...marks(DEBT, "currency")}
           list={CURRENCY_LIST}
-          title="The currency the debt is owed in. Proposed from your base currency; change it and it stays as you typed it."
+          title={tr("debts.currencyTitle")}
           value={currency}
           onChange={(e) => setCurrencyChoice(e.target.value)}
         />
         <select className={inputClass} value={assetId} onChange={(e) => setAssetId(e.target.value)}>
-          <option value="">finances asset…</option>
+          <option value="">{tr("debts.financesAsset")}</option>
           {assets.map((a) => (<option key={a.id} value={a.id}>{a.name}</option>))}
         </select>
-        <button className={btnClass} disabled={submitting}>{submitting ? "..." : editId != null ? "Save" : "Add"}</button>
+        <button className={btnClass} disabled={submitting}>{submitting ? "..." : editId != null ? tr("common.save") : tr("common.add")}</button>
         {editId != null && <CancelButton onClick={reset} />}
       </form>
       {formError && <p className="text-down">{formError}</p>}
-      <RowsOrEmpty loading={loading} error={error} empty={items.length === 0} emptyText="No debts, lucky you.">
+      <RowsOrEmpty loading={loading} error={error} empty={items.length === 0} emptyText={tr("debts.noDebts")}>
         {items.map((l) => (
           <Row
             key={l.id}
@@ -217,7 +222,7 @@ function DebtsLevel({ onSelect }: { onSelect: (l: Liability) => void }) {
             onEdit={() => startEdit(l)}
             onDelete={() => remove(l)}
             title={l.name}
-            badge={prettyKind(l.kind)}
+            badge={kindLabel(l.kind)}
             subtitle={debtSubtitle(l)}
             note={l.notes}
             value={l.latest_balance != null ? money(l.currency).format(l.latest_balance) : undefined}
@@ -229,6 +234,7 @@ function DebtsLevel({ onSelect }: { onSelect: (l: Liability) => void }) {
 }
 
 function BalancesLevel({ liability }: { liability: Liability }) {
+  const tr = useT();
   const [items, setItems] = useState<LiabilityBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -243,7 +249,7 @@ function BalancesLevel({ liability }: { liability: Liability }) {
     try {
       setItems(await getBalances(liability.id));
     } catch (err) {
-      setError(apiError(err, "Could not load balances."));
+      setError(apiError(err, tr("debts.loadBalances")));
     } finally {
       setLoading(false);
     }
@@ -251,10 +257,10 @@ function BalancesLevel({ liability }: { liability: Liability }) {
 
   return (
     <Section
-      title={`Outstanding balance: ${liability.name}`}
+      title={tr("debts.outstandingOf", { name: liability.name })}
       explain={{
-        question: "What is the outstanding balance?",
-        text: "The remaining principal, as your amortization statement shows it.",
+        question: tr("debts.outstandingQuestion"),
+        text: tr("debts.outstandingText"),
       }}
     >
       <DatedAmountEditor
@@ -269,10 +275,10 @@ function BalancesLevel({ liability }: { liability: Liability }) {
         update={updateBalance}
         destroy={deleteBalance}
         onChanged={load}
-        noun="balance"
-        amountLabel="Remaining"
+        noun={tr("dated.noun.balance")}
+        amountLabel={tr("debts.remaining")}
         needs={BALANCE}
-        emptyText="No balances yet."
+        emptyText={tr("debts.noBalances")}
       />
     </Section>
   );

@@ -11,6 +11,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { catalogueNotice, type CatalogueState } from "../src/components/catalogueNotice.ts";
+import { setLocale } from "../src/i18n/t.ts";
+
+// The host's navigator is Chinese; these sentences are pinned in English.
+setLocale("en");
 
 const clock = (iso: string) => iso.slice(11, 16);
 const EM_DASH = String.fromCharCode(0x2014);

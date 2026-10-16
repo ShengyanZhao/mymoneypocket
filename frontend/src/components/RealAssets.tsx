@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { joinList, tOpt, useT } from "../i18n/index.ts";
 import {
   createRealAsset,
   createValuation,
@@ -45,10 +46,11 @@ export default function RealAssets({
   onAsset: (a: RealAsset | null) => void;
 }) {
   const checked = useReopened(asset, getRealAsset, onAsset);
+  const tr = useT();
   if (!checked) return null;
 
   const crumbs: Crumb[] = [
-    { label: "Real assets", active: !asset, onClick: () => onAsset(null) },
+    { label: tr("nav.pages.real"), active: !asset, onClick: () => onAsset(null) },
   ];
   if (asset) crumbs.push({ label: asset.name, active: true, onClick: () => {} });
 
@@ -64,7 +66,14 @@ export default function RealAssets({
   );
 }
 
+/** A stored category code in the reader's words; a code nothing has been named
+    for is shown as stored rather than dropped. */
+function categoryLabel(c: string | null): string | null {
+  return c ? (tOpt(`code.${c}`) ?? c) : null;
+}
+
 function AssetsLevel({ onSelect }: { onSelect: (a: RealAsset) => void }) {
+  const tr = useT();
   const [items, setItems] = useState<RealAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +103,7 @@ function AssetsLevel({ onSelect }: { onSelect: (a: RealAsset) => void }) {
       setItems(assets);
       setBase(b.base_currency);
     } catch (err) {
-      setError(apiError(err, "Could not reach the backend. Is it running on :8000?"));
+      setError(apiError(err, tr("real.backendUnreachable")));
     } finally {
       setLoading(false);
     }
@@ -137,39 +146,39 @@ function AssetsLevel({ onSelect }: { onSelect: (a: RealAsset) => void }) {
       reset();
       await load();
     } catch (err) {
-      setFormError(apiError(err, "Save failed."));
+      setFormError(apiError(err, tr("common.saveFailed")));
     } finally {
       setSubmitting(false);
     }
   }
 
   async function remove(a: RealAsset) {
-    if (!window.confirm(`Delete "${a.name}"? This also removes its valuations.`)) return;
+    if (!window.confirm(tr("real.deleteConfirm", { name: a.name }))) return;
     setError(null);
     try {
       await deleteRealAsset(a.id);
       if (editId === a.id) reset();
       await load();
     } catch (err) {
-      setError(apiError(err, "Delete failed."));
+      setError(apiError(err, tr("real.deleteFailed")));
     }
   }
 
   return (
-    <Section title="Real assets">
+    <Section title={tr("nav.pages.real")}>
       <form onSubmit={submit} className="flex flex-wrap gap-2">
-        <input className={inputClass} aria-label="Name" {...marks(REAL_ASSET, "name")} value={name} onChange={(e) => setName(e.target.value)} />
+        <input className={inputClass} aria-label={tr("real.name")} {...marks(REAL_ASSET, "name")} value={name} onChange={(e) => setName(e.target.value)} />
         <select className={inputClass} value={category} onChange={(e) => setCategory(e.target.value)}>
-          {CATEGORIES.map((c) => (<option key={c} value={c}>{c || "category…"}</option>))}
+          {CATEGORIES.map((c) => (<option key={c} value={c}>{c ? (tOpt(`code.${c}`) ?? c) : tr("real.categoryBlank")}</option>))}
         </select>
-        <input className={inputClass + " w-24"} placeholder="currency" {...marks(REAL_ASSET, "currency")} list={CURRENCY_LIST} title="The currency the asset is valued in. Proposed from your base currency; change it and it stays as you typed it." value={currency} onChange={(e) => setCurrencyChoice(e.target.value)} />
-        <button className={btnClass} disabled={submitting}>{submitting ? "..." : editId != null ? "Save" : "Add"}</button>
+        <input className={inputClass + " w-24"} placeholder={tr("real.currency")} {...marks(REAL_ASSET, "currency")} list={CURRENCY_LIST} title={tr("real.currencyTitle")} value={currency} onChange={(e) => setCurrencyChoice(e.target.value)} />
+        <button className={btnClass} disabled={submitting}>{submitting ? "..." : editId != null ? tr("common.save") : tr("common.add")}</button>
         {editId != null && <CancelButton onClick={reset} />}
       </form>
       {formError && <p className="text-down">{formError}</p>}
-      <RowsOrEmpty loading={loading} error={error} empty={items.length === 0} emptyText="No real assets yet.">
+      <RowsOrEmpty loading={loading} error={error} empty={items.length === 0} emptyText={tr("real.noRealAssets")}>
         {items.map((a) => (
-          <Row key={a.id} onClick={() => onSelect(a)} onEdit={() => startEdit(a)} note={a.notes} onDelete={() => remove(a)} title={a.name} badge={a.category} subtitle={a.currency} />
+          <Row key={a.id} onClick={() => onSelect(a)} onEdit={() => startEdit(a)} note={a.notes} onDelete={() => remove(a)} title={a.name} badge={categoryLabel(a.category)} subtitle={a.currency} />
         ))}
       </RowsOrEmpty>
     </Section>
@@ -177,6 +186,7 @@ function AssetsLevel({ onSelect }: { onSelect: (a: RealAsset) => void }) {
 }
 
 function ValuationsLevel({ asset }: { asset: RealAsset }) {
+  const tr = useT();
   const [items, setItems] = useState<RealAssetValuation[]>([]);
   const [linkedDebts, setLinkedDebts] = useState<Liability[]>([]);
   const [loading, setLoading] = useState(true);
@@ -197,7 +207,7 @@ function ValuationsLevel({ asset }: { asset: RealAsset }) {
       setItems(vals);
       setLinkedDebts(liabs.filter((l) => l.real_asset_id === asset.id));
     } catch (err) {
-      setError(apiError(err, "Could not load valuations."));
+      setError(apiError(err, tr("real.loadValuations")));
     } finally {
       setLoading(false);
     }
@@ -222,19 +232,35 @@ function ValuationsLevel({ asset }: { asset: RealAsset }) {
   const inAsset = money(asset.currency);
 
   return (
-    <Section title={`Valuations: ${asset.name}`}>
+    <Section title={tr("real.valuationsOf", { name: asset.name })}>
       {equity != null && linkedDebts.length > 0 && (
         <p className="rounded-sm bg-ground p-3 text-sm text-ink-soft">
-          Latest value {inAsset.format(latestValue!)} − debt {inAsset.format(debtTotal)} (
-          {linkedDebts.map((l) => l.name).join(", ")}) ={" "}
-          <strong className="text-ink">your equity {inAsset.format(equity)}</strong>
+          {tr
+            .rich("real.equityLine", {
+              value: inAsset.format(latestValue!),
+              debt: inAsset.format(debtTotal),
+              names: joinList(linkedDebts.map((l) => l.name)),
+              equity: inAsset.format(equity),
+            })
+            .map((p, i) =>
+              p.kind === "strong" ? (
+                <strong key={i} className="text-ink">{p.value}</strong>
+              ) : p.kind === "em" ? (
+                <em key={i}>{p.value}</em>
+              ) : (
+                <span key={i}>{p.value}</span>
+              ),
+            )}
         </p>
       )}
       {otherCurrency.length > 0 && (
         <p className="rounded-sm bg-ground p-3 text-sm text-ink-soft">
-          Equity is not worked out here:{" "}
-          {otherCurrency.map((l) => `${l.name} is in ${l.currency}`).join(", ")}, and this
-          asset is valued in {asset.currency}. The net worth on the Dashboard converts both.
+          {tr("real.equitySkipped", {
+            list: joinList(
+              otherCurrency.map((l) => tr("real.debtInCurrency", { name: l.name, currency: l.currency })),
+            ),
+            currency: asset.currency,
+          })}
         </p>
       )}
       <DatedAmountEditor
@@ -249,10 +275,10 @@ function ValuationsLevel({ asset }: { asset: RealAsset }) {
         update={updateValuation}
         destroy={deleteValuation}
         onChanged={load}
-        noun="valuation"
-        amountLabel="Value"
+        noun={tr("dated.noun.valuation")}
+        amountLabel={tr("real.value")}
         needs={VALUATION}
-        emptyText="No valuations yet."
+        emptyText={tr("real.noValuations")}
       />
     </Section>
   );

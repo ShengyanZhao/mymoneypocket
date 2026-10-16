@@ -1,0 +1,375 @@
+/* Staging fragment: the Records children in Chinese.
+
+   Typed against `recordsEn` so a key missing here or spelled wrong is a
+   compiler error. Keep every `{placeholder}`; Chinese has no one/two of a
+   count, so a `|` in English becomes a single form. */
+
+import type { recordsEn } from "./records.en.ts";
+
+export const recordsZh: Record<keyof typeof recordsEn, string> = {
+  // --- 资产：机构 -----------------------------------------------------------
+  "wealth.institutions": "机构",
+  "wealth.nameOfBankOrBroker": "银行或券商名称",
+  "wealth.typePlaceholder": "类型（如银行）",
+  "wealth.noInstitutions": "还没有机构。",
+  "wealth.deleteInstitution":
+    "删除「{name}」？它的状况、持仓和现金锚点也会一并删除。",
+  "wealth.backendUnreachable": "无法连接后端。它是否在 :8000 上运行？",
+  "wealth.deleteFailed": "删除失败。",
+  "wealth.creationFailed": "创建失败。",
+  "wealth.noSituationYet": "尚未记录状况",
+  "wealth.oneSituationOnly": "只有一期状况（{date}）：还没有可比较的历史",
+  "wealth.situationsCount": "{count} 期状况 · 最新 {date}",
+
+  // --- 资产：现金账 ---------------------------------------------------------
+  "wealth.cash": "现金",
+  "wealth.today": "今天",
+  "wealth.unknown": "未知",
+  "wealth.fromAnchor": "自 {date} 的锚点 {amount} 起：",
+  "wealth.termIncome": "+ 收入 {amount}",
+  "wealth.termExpenses": "− 支出 {amount}",
+  "wealth.termTransfers": "转账 +{in} / −{out}",
+  "wealth.termBuys": "− 买入 {amount}",
+  "wealth.termSells": "+ 卖出/分红 {amount}",
+  "wealth.destIncome": "记账 → 现金流，收入在这里录入",
+  "wealth.destExpenses": "记账 → 现金流，支出在这里录入",
+  "wealth.destTransfers": "记账 → 现金流，转账在这里录入",
+  "wealth.destBuys": "持仓的流水，买入在这里录入",
+  "wealth.destSells": "持仓的流水，卖出和分红在这里录入",
+  "wealth.noAnchorYet":
+    "还没有锚点。在下方填入你在某个日期实际持有的现金。该日期之后关联的工资、支出和转账就会自动推算。",
+  "wealth.anchorInFuture":
+    "最早的锚点日期是 {date}，还在未来，因此现金会从那天开始推算。如果你指的是「今天」，请用 ✎ 改一下。",
+  "wealth.loadCash": "无法加载这个账户的现金。",
+  "wealth.actualBalance": "实际余额",
+  "wealth.balanceOn": "余额日期",
+  "wealth.actualCash": "实际现金",
+  "wealth.addAnchor": "添加锚点",
+  "wealth.noAnchors": "还没有锚点。",
+
+  // --- 资产：投资状况 -------------------------------------------------------
+  "wealth.investmentSituations": "投资状况",
+  "wealth.held": "持有",
+  "wealth.portfolioNotLoaded": "持仓没有加载出来：这不是零",
+  "wealth.carriedAll": "沿用已记录的数字，未按市价估值",
+  "wealth.carriedSome": "其中 {amount} 沿用已记录的数字，未按市价估值",
+  "wealth.situationsHint":
+    "你在某个日期的投资持仓。现金记在上面的「现金」里。",
+  "wealth.situationsNote":
+    "要更新，请从上一期开始新的一天。编辑旧的状况会改写当天的说法。",
+  "wealth.loadSituations": "无法加载状况。",
+  "wealth.nothingToStartFrom": "还没有可以参照的：这个账户的第一期状况需要从头声明。",
+  "wealth.startFromLastTitle":
+    "复制最新一期的持仓和数量，把所有有代码的标的按这一天的市价重新估值，并告诉你哪些行还需要你处理",
+  "wealth.declareFromScratch": "从头声明这个账户在这一天持有的东西。",
+  "wealth.emptySituationAuthority":
+    "空的状况会成为这个账户的依据：这里记录的 {count} 个持仓会离开你的净资产，除非你在这里重新录入。",
+  "wealth.dialogAuthority": "空的状况会成为这个账户自 {date} 起的依据。",
+  "wealth.dialogLeaves":
+    "下面的 {count} 个持仓会离开你的净资产，除非你在这里重新录入：",
+  "wealth.dialogReported": "它们会被报告为下落不明，而不是悄悄消失。",
+  "wealth.dialogKeeps": "能保留它们。仍要继续吗？",
+  "wealth.startFromLast": "从上一期开始",
+  "wealth.declareFirst": "声明第一期状况",
+  "wealth.startEmpty": "从空白开始",
+  "wealth.copiedNeedsAttention":
+    "已从 {date} 复制。{n} 个持仓已按市价估值。只有 {names} 还需要你处理。",
+  "wealth.copiedAll": "已从 {date} 复制，全部 {n} 个持仓已按市价估值。",
+  "wealth.couldNotPrefill": "无法从上一期开始。",
+  "wealth.deleteSituation": "删除 {date} 的状况？它的持仓也会一并删除。",
+  "wealth.dateTaken": "{date} 已经有一期状况",
+  "wealth.openIt": "打开它",
+  "wealth.orPickAnotherDate": "，或者换一个日期来记录新的一期。",
+  "wealth.noSituations": "还没有状况。",
+
+  // --- 资产：一期状况的持仓 -------------------------------------------------
+  "wealth.situationOf": "状况：{date}",
+  "wealth.total": "合计",
+  "wealth.cashNotEnteredHere":
+    "现金不在这里录入：它属于这个账户的「现金」，两边都记会算两次。",
+  "wealth.oldSituationTitle":
+    "编辑旧的状况会改写当天的说法，财富走势图会把今天的数字画成当时就成立的样子，「相对记录的盈亏」也会塌掉，因为这张照片开始追着市场跑。",
+  "wealth.oldSituation":
+    "这是 **{date}** 的状况，{count} 天前：在这里编辑会改写当天的说法。今天的状况请用「从上一期开始」。",
+  "wealth.loadHoldings": "无法加载持仓。",
+  "wealth.deleteHolding": "移除「{name}」？",
+  "wealth.bucket.stocks": "股票与 ETF",
+  "wealth.bucket.bonds": "债券",
+  "wealth.bucket.commodities": "大宗商品",
+  "wealth.bucket.crypto": "加密货币",
+  "wealth.bucket.other": "其他",
+  "wealth.policyHistory": "按历史",
+  "wealth.policyAcc": "累积",
+  "wealth.policyDist": "分红",
+  "wealth.modeTotal": "总金额",
+  "wealth.modeQty": "数量 × 价格",
+  "wealth.tickerOrIsin": "代码或 ISIN",
+  "wealth.tickerTitle":
+    "带交易所后缀的 Yahoo 代码（VWCE.MI = 意大利交易所，SAP.DE = Xetra，无后缀 = 美国，BTC-EUR = 加密）。光写「VWCE」这样的代码匹配不到。ISIN（如 IE00BK5BQT80）也可以。尽量选欧元计价的上市份额，价格就不用换汇了。",
+  "wealth.isinOptional": "ISIN（可选）",
+  "wealth.isinTitle":
+    "基金的 ISIN。代码用来给持仓定价；ISIN 是穿透查询看清基金内部用的：同一只基金在每个交易所代码都不同，一个框顾不了两件事。",
+  "wealth.addIsin": "添加基金的 ISIN",
+  "wealth.costPlaceholder": "成本（可选）",
+  "wealth.costLabel": "成本",
+  "wealth.costTitle":
+    "这个持仓一共花了多少，按它自己的币种。不知道就留空：空的成本就是「成本未知」，这是实话；瞎猜一个会让盈亏把波动说成盈利。",
+  "wealth.dividendPolicy": "分红政策",
+  "wealth.policyTitle":
+    "按历史：应用每天在 Yahoo 读一次这个持仓的分红，并把每一笔记入这个机构的现金，股票就是这么运作的。分红：同上，按你或目录里的说法。累积：不记分红（基金把它们再投了）。",
+  "wealth.howEntered": "这个持仓怎么录入",
+  "wealth.value": "价值",
+  "wealth.toUnitsTitle":
+    "按这个标的的价格算出这个价值是多少份，这样持仓就能自己定价，而不是留一个要你维护的数字",
+  "wealth.toUnits": "→ 换算份额",
+  "wealth.quantity": "数量",
+  "wealth.price": "价格",
+  "wealth.fetchPriceTitle": "取这个代码的最新市价",
+  "wealth.live": "↻ 实时",
+  "wealth.currency": "币种",
+  "wealth.currencyTitle":
+    "价值、价格和成本用的币种。已知上市币种时按它建议，否则按这个账户在状况日期的锚点；改过之后就按你输入的为准。",
+  "wealth.deriveTooFar":
+    "这期状况是 {situation}，而价格来自 {price}。用一个除以另一个会造出你从未持有过的数量。请改为从券商那里填入份额。",
+  "wealth.derivedUnits":
+    "{value} ÷ {price} = {name} 的 {units} 份（{date} 收盘价）。是推算出来的，请和券商核对。",
+  "wealth.couldNotPrice": "无法给这个代码定价，因此算不出份额。",
+  "wealth.quoteOk": "✓ {name}{resolved}：{price} {currency}（{date} 收盘）",
+  "wealth.marketUnreachable":
+    "⚠ 无法连接行情源，所以你的代码很可能是对的。没有任何回应，这说明不了它对不对。联网后再试一次。",
+  "wealth.noMarketMatch":
+    "✗ 行情里没有匹配。光写代码不行：要加交易所后缀（VWCE.MI 是意大利交易所，.DE 是 Xetra，美国不加），或粘贴基金的 ISIN。",
+  "wealth.refreshFailed": "「{name}」的价格刷新失败。请检查它的代码。",
+  "wealth.pickCatalogue":
+    "{identity} 来自目录。代码仍要你自己填：这只基金在每个交易所的代码都不一样。",
+  "wealth.pickOwned": "{symbol}：你持仓上已有的代码{at}。",
+  "wealth.atInstitution": "（{name}）",
+  "wealth.pickChecking": "{exchange} 上的 {symbol}：正在确认它的报价…",
+  "wealth.itsExchange": "它所在的交易所",
+  "wealth.lastDividend": "最近分红 {date}",
+
+  // --- 实物资产 -------------------------------------------------------------
+  "real.name": "名称",
+  "real.categoryBlank": "类别…",
+  "real.currency": "币种",
+  "real.currencyTitle":
+    "这项资产以什么币种估值。默认按你的本位币建议；改过之后就按你输入的为准。",
+  "real.noRealAssets": "还没有实物资产。",
+  "real.deleteConfirm": "删除「{name}」？它的估值记录也会一并删除。",
+  "real.backendUnreachable": "无法连接后端。它是否在 :8000 上运行？",
+  "real.deleteFailed": "删除失败。",
+  "real.loadValuations": "无法加载估值。",
+  "real.valuationsOf": "估值：{name}",
+  "real.equityLine":
+    "最新估值 {value} − 负债 {debt}（{names}）= **你的净值 {equity}**",
+  "real.debtInCurrency": "{name} 是 {currency} 计价",
+  "real.equitySkipped":
+    "这里不算净值：{list}，而这项资产是 {currency} 计价的。总览页上的净资产会把两边都换算。",
+  "real.value": "价值",
+  "real.noValuations": "还没有估值。",
+
+  // --- 负债 -----------------------------------------------------------------
+  "debts.name": "名称",
+  "debts.kindBlank": "种类…",
+  "debts.kind.mortgage": "房贷",
+  "debts.kind.personal_loan": "个人贷款",
+  "debts.kind.auto_loan": "车贷",
+  "debts.kind.student_loan": "学贷",
+  "debts.kind.credit_card": "信用卡",
+  "debts.kind.other": "其他",
+  "debts.ratePlaceholder": "利率 %/年",
+  "debts.currency": "币种",
+  "debts.currencyTitle":
+    "这笔负债是什么币种。默认按你的本位币建议；改过之后就按你输入的为准。",
+  "debts.financesAsset": "为哪项资产融资…",
+  "debts.noDebts": "没有负债，真幸运。",
+  "debts.deleteConfirm": "删除「{name}」？它的余额历史也会一并删除。",
+  "debts.backendUnreachable": "无法连接后端。它是否在 :8000 上运行？",
+  "debts.deleteFailed": "删除失败。",
+  "debts.hint":
+    "房贷、贷款……净资产会减去每一笔的最新余额。把房贷关联到它的资产，就能看到你的净值。",
+  "debts.finances": "为 {name} 融资",
+  "debts.ratePerYear": "{rate}%/年",
+  "debts.loadBalances": "无法加载余额。",
+  "debts.outstandingOf": "未偿余额：{name}",
+  "debts.outstandingQuestion": "什么是未偿余额？",
+  "debts.outstandingText": "剩余的本金，按你的还款计划表所显示的。",
+  "debts.remaining": "剩余",
+  "debts.noBalances": "还没有余额。",
+
+  // --- 现金流：四个数字 -----------------------------------------------------
+  "cash.monthlyIncome": "月收入",
+  "cash.monthlyExpenses": "月支出",
+  "cash.monthlyNet": "月净额",
+  "cash.breakdown":
+    "收入：主动 {active} · 被动 {passive}。支出：必要 {essential} · 可选 {discretionary}。",
+  "cash.notCountedMarked": "未计入：{what}（下方有标注）。",
+  "cash.backendUnreachable": "无法连接后端。它是否在 :8000 上运行？",
+  "cash.deleteFailed": "删除失败。",
+
+  // --- 现金流：收入与支出 ---------------------------------------------------
+  "cash.incomeHint": "机构 = 记到哪里（它的现金）。",
+  "cash.expenseHint": "机构 = 从哪里支出（它的现金）。",
+  "cash.noIncome": "还没有收入。",
+  "cash.noExpenses": "还没有支出。",
+  "cash.deleteIncome": "删除收入「{name}」？",
+  "cash.deleteExpense": "删除支出「{name}」？",
+  "cash.name": "名称",
+  "cash.amount": "金额",
+  "cash.kindBlank": "类型…",
+  "cash.natureBlank": "性质…",
+  "cash.categoryBlank": "类别…",
+  "cash.frequencyBlank": "频率…",
+  "cash.institutionBlank": "机构…",
+  "cash.end": "结束",
+  "cash.currency": "币种",
+  "cash.flowCurrencyTitle":
+    "金额用的币种。默认按机构在首次付款日期的现金建议；改过之后就按你输入的为准。",
+  "cash.kind.active": "主动",
+  "cash.kind.passive": "被动",
+  "cash.nature.essential": "必要",
+  "cash.nature.discretionary": "可选",
+  "cash.category.salary": "工资",
+  "cash.category.freelance": "自由职业",
+  "cash.category.business": "经营",
+  "cash.category.rental": "租金",
+  "cash.category.dividends": "分红",
+  "cash.category.interest": "利息",
+  "cash.category.pension": "养老金",
+  "cash.category.housing": "住房",
+  "cash.category.food": "餐饮",
+  "cash.category.transport": "交通",
+  "cash.category.utilities": "水电网",
+  "cash.category.health": "健康",
+  "cash.category.insurance": "保险",
+  "cash.category.debt": "还贷",
+  "cash.category.leisure": "休闲",
+  "cash.category.education": "教育",
+  "cash.category.other": "其他",
+  // 现行词表（app/taxonomy.py）：旧码行照常显示，下拉只给新词
+  "cash.category.wage": "工资",
+  "cash.category.bonus": "奖金",
+  "cash.category.red_packet": "红包",
+  "cash.category.reimbursement": "报销",
+  "cash.category.investment_income": "投资收益",
+  "cash.category.side_hustle": "兼职",
+  "cash.category.dining": "餐饮",
+  "cash.category.shopping": "购物",
+  "cash.category.telecom": "通讯",
+  "cash.category.medical": "医疗",
+  "cash.category.entertainment": "文娱",
+  "cash.category.travel": "旅行",
+  "cash.category.debt_payment": "还贷",
+  "cash.category.gift": "人情",
+  "cash.category.social_security": "社保公积金",
+  "cash.category.tax": "个税",
+  "cash.category.transfer": "转账",
+  "cash.category.investment": "投资",
+  "cash.frequency.monthly": "每月",
+  "cash.frequency.quarterly": "每季",
+  "cash.frequency.semiannual": "每半年",
+  "cash.frequency.annual": "每年",
+  "cash.frequency.one_off": "一次性",
+  "cash.fromDate": "自 {date}",
+  "cash.untilDate": "至 {date}",
+
+  // --- 现金流：转账 ---------------------------------------------------------
+  "cash.transfers": "转账",
+  "cash.transfersHint":
+    "在某一天把现金从你的一家机构转到另一家。它会减少转出方的现金，增加转入方的。跨币种时，除非你按对账单填入，到账金额按那天的参考汇率算出。",
+  "cash.on": "日期",
+  "cash.fromExternal": "从（或外部）…",
+  "cash.toExternal": "到（或外部）…",
+  "cash.external": "外部",
+  "cash.deleteTransfer": "删除这笔转账？",
+  "cash.noAnswer": "没有得到回答。",
+  "cash.fromCurrencyTitle": "从转出账户扣走的那种币",
+  "cash.toCurrencyTitle": "转入账户入账的那种币",
+  "cash.arrivedIn": "到账 {currency}",
+  "cash.arrivedTitle":
+    "转入方实际入账的金额，照它的对账单。留空就按那天的参考汇率算。你银行的汇率会略有差别。",
+  "cash.atEcbRate": "按 {date} 的参考汇率",
+  "cash.noTransfers": "还没有转账。",
+
+  // --- 现金流：定投 ---------------------------------------------------------
+  "cash.pacHint": "定期买入：动多少钱，买什么，多久一次。",
+  "cash.pacQuestion": "定投是怎么运作的？",
+  "cash.pacExplain":
+    "计划要写明两端（每期扣款的账户，以及每笔投资放在哪里），因为钱从前者流向后者，两头都不写的计划描述的是一笔没人做过的买入。有多个标的时预算当作一笔钱花，所以只买整数份额的券商只留一个小小的余数，而不是每个基金留一个，余数结转到下一期。",
+  "cash.planName": "计划名称",
+  "cash.budget": "预算",
+  "cash.budgetTitle": "每期投入的总额，按下面的标的拆分",
+  "cash.planCurrencyTitle":
+    "投入用的币种：出资账户的现金。默认按该账户在首次买入日期的现金建议；改过之后就按你输入的为准。",
+  "cash.wholeUnits": "整数份额",
+  "cash.fractional": "小数份额",
+  "cash.executionTitle":
+    "你的券商怎么成交：只买整数份额（余数留在现金里），或按精确到分的小数份额把这笔投入花完。看看你的是哪一种；它决定了一笔投入能买到什么。",
+  "cash.whichAccountFunds": "从哪个账户出资？",
+  "cash.sourceTitle":
+    "每期投入从哪个账户扣。必填：不说钱从哪里来的计划无处扣钱，它的买入花掉的是任何账户都没少过的钱。",
+  "cash.buyWhat": "买什么？输入以搜索",
+  "cash.ticker": "代码",
+  "cash.tickerTitle":
+    "带交易所后缀的 Yahoo 代码（如 VWCE.MI）。其他币种的上市份额按它当天的收盘价买入，并按当天的参考汇率换算成计划的币种",
+  "cash.whereHeld": "放在哪里？",
+  "cash.whereHeldTitle":
+    "这笔投资将放在哪里。必填：放在任何机构之外的持仓，没有一期状况能给它拍照，也没有一笔卖出能给它交割。默认已填入出资账户：如果这笔要买在别处，请改掉。",
+  "cash.share": "份额",
+  "cash.shareTitle": "预算的相对比例：1/1/1 和 40/30/30 是一回事",
+  "cash.removeTarget": "删掉这个标的",
+  "cash.addAnother": "+ 再加一笔投资",
+  "cash.split": "{amount} 按 {shares} 分配",
+  "cash.sayWhereHeld":
+    "请说明 {names} 放在哪里。放在任何地方都没有的持仓，没有一期状况能给它拍照，也没有一笔卖出能给它交割。",
+  "cash.it": "它",
+  "cash.deletePlan": "删除计划「{name}」？",
+  "cash.nothingYet": "还没有",
+  "cash.fromCash": "现金",
+  "cash.planFrom": "从 {source} → {targets}",
+  "cash.openAccount": "打开 {name}",
+  "cash.noMatches":
+    "**{names}** 与你持有的任何持仓都对不上：新计划这样没问题，但写错代码会新开一个持仓，而不是加到你已有的那个里。",
+  "cash.noMatchesTitle":
+    "成交按代码精确匹配到持仓，所以拼写不同会悄悄为同一只基金新开一个持仓，而不是加到你已持有的那个里。如果你的计划要买的是还没买过的东西，这是正常的：第一笔成交会创建它。",
+  "cash.noPlans": "还没有定投。",
+  "cash.setAsideEnded": "{amount} 留出来但从未投出：这个计划已经结束",
+  "cash.setAsideWaiting": "{amount} 留着，等下一期投入",
+
+  // --- 现金流：账单导入与逐笔流水 -------------------------------------------
+  "imports.title": "导入账单",
+  "imports.hint":
+    "在支付宝/微信里导出账单 CSV，在这里导入。导入前逐条确认，同一批随时可撤销；同一文件导入两次不会记两遍。",
+  "imports.choose": "选择账单文件",
+  "imports.previewBtn": "预览",
+  "imports.account": "记入账户…",
+  "imports.accountHint": "这些钱算在哪个账户的现金里。",
+  "imports.confirm": "导入 {count} 条",
+  "imports.cancel": "取消",
+  "imports.rowsSeen": "共 {count} 条",
+  "imports.duplicates": "{count} 条已经导入过，本次跳过",
+  "imports.unreadable": "{count} 行读不出",
+  "imports.pairs": "{count} 对像是同一笔转账（一出一进），已成对勾选",
+  "imports.done": "已导入 {count} 条。",
+  "imports.doneSkipped": "已导入 {count} 条，跳过 {duplicates} 条重复。",
+  "imports.failed": "导入失败。",
+  "imports.batches": "导入记录",
+  "imports.noBatches": "还没有导入过账单。",
+  "imports.batchLine": "{source} · {filename} · {written} 条 · {from} → {to}",
+  "imports.deleteBatch": "撤销",
+  "imports.deleteBatchAsk": "撤销这次导入？它写入的 {count} 条会被删除，其他记录不受影响。",
+  "imports.entriesTitle": "逐笔流水",
+  "imports.noEntries": "还没有逐笔流水。",
+  "imports.source.alipay": "支付宝",
+  "imports.source.wechat": "微信支付",
+  "imports.source.bank": "银行",
+  "imports.source.broker": "券商",
+  "imports.source.generic": "通用",
+  "imports.source.unknown": "未知",
+  "imports.colDate": "日期",
+  "imports.colDirection": "收/支",
+  "imports.colCounterparty": "对方",
+  "imports.colCategory": "分类",
+  "imports.colAmount": "金额",
+  "imports.legMark": "转账",
+};

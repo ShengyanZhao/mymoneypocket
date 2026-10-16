@@ -13,6 +13,8 @@
    Pure, so `tests/cashDelete.test.ts` runs it under Node: the request and the
    reading of its failure are handed in. */
 
+import { t } from "../i18n/t.ts";
+
 /** The question, with what the backend says the deletion moves; when that
     could not be had, the question with why, so the reader still decides. */
 export async function askBeforeDeleting(
@@ -23,6 +25,6 @@ export async function askBeforeDeleting(
   try {
     return `${asked} ${await moves()}`;
   } catch (err) {
-    return `${asked} What deleting it moves could not be worked out: ${failure(err)}`;
+    return `${asked} ${t("del.movesUnknown", { reason: failure(err) })}`;
   }
 }

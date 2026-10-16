@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from conftest import _empty_every_table
+from conftest import _start_a_test
 
 from app import advisor, chat, crud, tools
 from app.database import SessionLocal
@@ -139,7 +139,7 @@ def _by_chat_and_by_form(client, monkeypatch, arguments: dict, form) -> dict:
     assert _confirm(client, monkeypatch, card).status_code == 200
     by_chat = _rows(client)
 
-    _empty_every_table()
+    _start_a_test()
     ids = _setup(client)
     form(client, ids)
     by_form = _rows(client)
@@ -208,7 +208,7 @@ def test_an_income_added_takes_the_accounts_currency_as_the_form_proposes_it(cli
     assert "300.00 USD" in card["title"]
     assert _confirm(client, monkeypatch, card).status_code == 200
     by_chat = _rows(client)
-    _empty_every_table()
+    _start_a_test()
     form(client, _setup(client))
     assert by_chat == _rows(client)
 

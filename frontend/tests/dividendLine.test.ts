@@ -7,6 +7,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { dividendWord, policyWord } from "../src/components/dividendLine.ts";
+import { catalogues, setLocale } from "../src/i18n/t.ts";
+import { portfolioEn } from "../src/i18n/messages/staging/portfolio.en.ts";
+import { portfolioZh } from "../src/i18n/messages/staging/portfolio.zh.ts";
+
+Object.assign(catalogues.en, portfolioEn);
+Object.assign(catalogues.zh, portfolioZh);
+setLocale("en");
 
 test("a stated policy is said, whatever the history lists", () => {
   assert.equal(dividendWord("acc", "2026-09-15"), "Accumulating");

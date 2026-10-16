@@ -11,6 +11,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { identityOf, isShare, prefillNote } from "../src/components/watchItem.ts";
+import { catalogues, setLocale } from "../src/i18n/t.ts";
+import { portfolioEn } from "../src/i18n/messages/staging/portfolio.en.ts";
+import { portfolioZh } from "../src/i18n/messages/staging/portfolio.zh.ts";
+
+Object.assign(catalogues.en, portfolioEn);
+Object.assign(catalogues.zh, portfolioZh);
+setLocale("en");
 
 const SHARE = { isin: null, symbol: "ACME.MI" };
 const FUND = { isin: "XA0000000011", symbol: "EXF1.MI" };

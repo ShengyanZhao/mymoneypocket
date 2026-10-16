@@ -20,6 +20,13 @@ import {
   recordedByTheApp,
   type LedgerRow,
 } from "../src/components/sameDividend.ts";
+import { catalogues, setLocale } from "../src/i18n/t.ts";
+import { portfolioEn } from "../src/i18n/messages/staging/portfolio.en.ts";
+import { portfolioZh } from "../src/i18n/messages/staging/portfolio.zh.ts";
+
+Object.assign(catalogues.en, portfolioEn);
+Object.assign(catalogues.zh, portfolioZh);
+setLocale("en");
 
 const STAMP = "Auto-recorded from market data: a dividend of 0.25 USD per share";
 

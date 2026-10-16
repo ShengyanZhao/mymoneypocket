@@ -10,6 +10,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { avgCostTitle, plTitle } from "../src/components/costWords.ts";
+import { catalogues, setLocale } from "../src/i18n/t.ts";
+import { portfolioEn } from "../src/i18n/messages/staging/portfolio.en.ts";
+import { portfolioZh } from "../src/i18n/messages/staging/portfolio.zh.ts";
+
+// Until the staging fragments are merged into the catalogues, lookups need
+// them here. A no-op once they have been.
+Object.assign(catalogues.en, portfolioEn);
+Object.assign(catalogues.zh, portfolioZh);
+// Node exposes a `navigator`, so the ambient locale is the machine's. These
+// fixtures are written in English; pin it rather than trust the host.
+setLocale("en");
 
 const ESTIMATED = { cost_known: true, cost_estimated: true };
 const PAID = { cost_known: true, cost_estimated: false };

@@ -19,7 +19,12 @@
 
    The dates mirror the backend's: start + k months, the day clamped only
    inside a shorter month (`analytics.recurrence`), and a month the plan
-   already has counts as its own (`pac._settled_months`). */
+   already has counts as its own (`pac._settled_months`).
+
+   The sentences are read from the catalogue when they are said, never at
+   import: a reader who switches language mid-form must see the switch. */
+
+import { t } from "../i18n/t.ts";
 
 /** How many months between two dates of a schedule, as the backend steps it. */
 const STEP_MONTHS: Record<string, number> = { monthly: 1, quarterly: 3, semiannual: 6, annual: 12 };
@@ -110,42 +115,44 @@ export function pastBuysWarning(p: PastBuys, start: string): {
   const n = p.dates.length;
   const what =
     n === 1
-      ? `a buy into your records, dated ${p.dates[0]}`
-      : `${n} buys into your records, dated from ${p.dates[0]} to ${p.dates[n - 1]}`;
+      ? t("firstDate.pastOne", { date: p.dates[0] })
+      : t("firstDate.pastMany", { count: n, first: p.dates[0], last: p.dates[n - 1] });
   return {
-    lead: p.hasRun ? "This change adds dates before today." : `${start} is in the past.`,
-    body: `Saved like this, the app writes ${what}, priced at Yahoo's close rather than at your broker's fills, and marked estimated.`,
-    alternative: p.next
-      ? "Already running at your broker? Then let everything up to today be the broker's: start the plan on its next date, and enter today's units and cash from its statement on the account's page."
-      : null,
-    button: p.next ? `Start on ${p.next}` : null,
+    lead: p.hasRun ? t("firstDate.leadChanged") : t("firstDate.leadPast", { start }),
+    body: t("firstDate.body", { what }),
+    alternative: p.next ? t("firstDate.alternative") : null,
+    button: p.next ? t("firstDate.startOn", { date: p.next }) : null,
   };
 }
 
 /** Said under the dates once the one press has set the next date. */
 export function startsLine(next: string): string {
-  return `Starts ${next}. Once it is saved, enter today's units and cash from the broker's statement on the account's page.`;
+  return t("firstDate.startsLine", { date: next });
 }
 
 /** Said above the plans once a plan set that way is saved; the accounts it
     touches follow as links. */
 export function afterSaveLine(name: string, start: string): string {
-  return `${name} starts on ${start}. Record today's situation and cash balance from the broker's statement (start the situation from the last one, so the other positions stay):`;
+  return t("firstDate.afterSave", { name, start });
 }
 
 /** A flow's date. A one-off happens on it; anything else is first paid on it,
     and repeats on its day. */
 export function flowDateLabel(frequency: string): string {
-  return frequency === "one_off" ? "on" : "first payment";
+  return frequency === "one_off" ? t("cash.on") : t("firstDate.flowFirst");
 }
 
 /** The line in view under the Income and Expenses titles. */
-export const FIRST_PAYMENT_NOTE =
-  "The first payment's day is the day it repeats on. A past date is safe: payments before the account's latest balance are already in it.";
+export function firstPaymentNote(): string {
+  return t("firstDate.paymentNote");
+}
 
 /** A PAC's date. */
-export const PLAN_DATE_LABEL = "first buy";
+export function planDateLabel(): string {
+  return t("firstDate.planDate");
+}
 
 /** The line in view under the PAC title: where a buy's figures come from. */
-export const PLAN_NOTE =
-  "Each date's buy is written the first time the app opens after that day, at its market close (converted at that day's ECB rate when the fund trades in another currency), and marked estimated.";
+export function planNote(): string {
+  return t("firstDate.planNote");
+}

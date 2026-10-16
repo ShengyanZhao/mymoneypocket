@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useState, type FormEvent } from "react";
 import {
   computeRequiredReturn,
   createGoal,
@@ -20,21 +20,80 @@ import {
   CURRENCY_LIST,
 } from "./ui";
 import { goal, marks, refusal } from "./required";
+import { tOpt, useT } from "../i18n/index.ts";
 
-const GOAL_TYPES: { value: string; label: string }[] = [
-  { value: "protect_inflation", label: "Protect from inflation" },
-  { value: "stable_income", label: "Stable / passive income" },
-  { value: "long_term_growth", label: "Long-term growth" },
-  { value: "emergency_fund", label: "Emergency fund" },
-  { value: "target_amount", label: "Target amount by a date" },
-  { value: "other", label: "Something else (describe it)" },
+/* The dropdown's six kinds of goal. `value` is what is stored and what the
+   form compares against, and it never moves; `label` is the English the page
+   used to show and still SENDS as the goal's name when the detail box is
+   empty; `labelKey` is what the page SHOWS. The two are kept apart on
+   purpose: a stored name is a fact, and it stays in the language it was
+   written in whatever the page is speaking today. */
+const GOAL_TYPES: { value: string; label: string; labelKey: string }[] = [
+  {
+    value: "protect_inflation",
+    label: "Protect from inflation",
+    labelKey: "goals.type.protect_inflation",
+  },
+  {
+    value: "stable_income",
+    label: "Stable / passive income",
+    labelKey: "goals.type.stable_income",
+  },
+  {
+    value: "long_term_growth",
+    label: "Long-term growth",
+    labelKey: "goals.type.long_term_growth",
+  },
+  { value: "emergency_fund", label: "Emergency fund", labelKey: "goals.type.emergency_fund" },
+  {
+    value: "target_amount",
+    label: "Target amount by a date",
+    labelKey: "goals.type.target_amount",
+  },
+  {
+    value: "other",
+    label: "Something else (describe it)",
+    labelKey: "goals.type.other",
+  },
 ];
 
-function typeLabel(value: string | null): string | null {
+/** The English label: what an empty name is stored as, and what a stored name
+    is compared against to decide whether it says anything the type has not. */
+function englishTypeLabel(value: string | null): string | null {
   return GOAL_TYPES.find((t) => t.value === value)?.label ?? value;
 }
 
+/** The same label, said in the language in force, for the page alone.
+    `tOpt` rather than `tr` because the key is picked at runtime, and a goal
+    type nobody has translated yet should read as its English label rather
+    than as a key. The caller has `useT()`, so a language switch re-renders
+    into the new words. */
+function typeLabel(value: string | null): string | null {
+  const found = GOAL_TYPES.find((t) => t.value === value);
+  return found ? tOpt(found.labelKey) ?? found.label : value;
+}
+
+/* The backend's realism note under a required return. Six sentences, a closed
+   set (`planning.assess`), so each is named here rather than shown in the
+   backend's English beside a translated sentence. */
+const ASSESS_KEY: Record<string, string> = {
+  "The target date is in the past.": "goals.assess.pastDate",
+  "Target effectively unreachable with these contributions. Raise contributions or extend the horizon.":
+    "goals.assess.unreachable",
+  "Already on track without investment growth.": "goals.assess.onTrack",
+  "Conservative: feasible with a low-risk allocation.": "goals.assess.conservative",
+  "Moderate: in line with a diversified long-term portfolio.": "goals.assess.moderate",
+  "Aggressive: high risk, not guaranteed.": "goals.assess.aggressive",
+  "Unrealistic: consider extending the horizon, raising contributions, or lowering the target.":
+    "goals.assess.unrealistic",
+};
+
+function assessmentWords(assessment: string): string {
+  return tOpt(ASSESS_KEY[assessment] ?? "") ?? assessment;
+}
+
 export default function Goals() {
+  const tr = useT();
   const [items, setItems] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +127,7 @@ export default function Goals() {
       setItems(goals);
       setBase(b.base_currency);
     } catch (err) {
-      setError(apiError(err, "Could not reach the backend. Is it running on :8000?"));
+      setError(apiError(err, tr("common.backendDown")));
     } finally {
       setLoading(false);
     }
@@ -129,7 +188,10 @@ export default function Goals() {
     setSubmitting(true);
     setError(null);
     const payload = {
-      name: name.trim() || (typeLabel(type) ?? type),
+      // The English label, not the one on screen: what is stored is a fact in
+      // the language it was written in, and a page that switched language
+      // should not rewrite it.
+      name: name.trim() || (englishTypeLabel(type) ?? type),
       type,
       currency: currency.trim(),
       target_amount: isTarget && targetAmount ? Number(targetAmount) : null,
@@ -143,49 +205,49 @@ export default function Goals() {
       reset();
       await load();
     } catch (err) {
-      setError(apiError(err, "Save failed."));
+      setError(apiError(err, tr("common.saveFailed")));
     } finally {
       setSubmitting(false);
     }
   }
 
   async function remove(g: Goal) {
-    if (!window.confirm(`Delete goal "${g.name}"?`)) return;
+    if (!window.confirm(tr("goals.deleteConfirm", { name: g.name }))) return;
     setError(null);
     try {
       await deleteGoal(g.id);
       if (editId === g.id) reset();
       await load();
     } catch (err) {
-      setError(apiError(err, "Delete failed."));
+      setError(apiError(err, tr("goals.deleteFailed")));
     }
   }
 
   function goalSubtitle(g: Goal): string | undefined {
     if (g.type === "target_amount" && g.target_amount && g.target_date) {
-      return `target ${money(g.currency).format(g.target_amount)} by ${g.target_date}`;
+      return tr("goals.targetSubtitle", {
+        amount: money(g.currency).format(g.target_amount),
+        date: g.target_date,
+      });
     }
     return undefined;
   }
 
-  if (loading) return <p className="text-ink-soft">Loading…</p>;
+  if (loading) return <p className="text-ink-soft">{tr("common.loading")}</p>;
 
   return (
-    <Section
-      title="Goals"
-      hint="Pick a safe goal type, or set a concrete target (amount + date) to see the annual return it would require."
-    >
+    <Section title={tr("goals.title")} hint={tr("goals.hint")}>
       <form onSubmit={submit} className="space-y-3">
         <div className="flex flex-wrap gap-2">
           <select className={inputClass} {...marks(goal(type), "type")} value={type} onChange={(e) => setType(e.target.value)}>
-            <option value="">what is this goal for?…</option>
+            <option value="">{tr("goals.typePlaceholder")}</option>
             {GOAL_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>{t.label}</option>
+              <option key={t.value} value={t.value}>{typeLabel(t.value)}</option>
             ))}
           </select>
           <input
             className={inputClass + " min-w-64 flex-1"}
-            placeholder="Detail (optional), e.g. flat in Milan"
+            placeholder={tr("goals.detailPlaceholder")}
             {...marks(goal(type), "name")}
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -194,16 +256,16 @@ export default function Goals() {
 
         {isTarget && (
           <div className="flex flex-wrap items-center gap-2">
-            <input className={inputClass + " w-36"} type="number" step="0.01" placeholder="Target" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} />
+            <input className={inputClass + " w-36"} type="number" step="0.01" placeholder={tr("goals.targetPlaceholder")} value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} />
             <input className={inputClass} type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
-            <input className={inputClass + " w-36"} type="number" step="0.01" placeholder="Current" value={currentAmount} onChange={(e) => setCurrentAmount(e.target.value)} />
-            <input className={inputClass + " w-40"} type="number" step="0.01" placeholder="Monthly contribution" value={monthly} onChange={(e) => setMonthly(e.target.value)} />
+            <input className={inputClass + " w-36"} type="number" step="0.01" placeholder={tr("goals.currentPlaceholder")} value={currentAmount} onChange={(e) => setCurrentAmount(e.target.value)} />
+            <input className={inputClass + " w-40"} type="number" step="0.01" placeholder={tr("goals.monthlyPlaceholder")} value={monthly} onChange={(e) => setMonthly(e.target.value)} />
             <input
               className={inputClass + " w-20"}
-              placeholder="currency"
+              placeholder={tr("goals.currencyPlaceholder")}
               {...marks(goal(type), "currency")}
               list={CURRENCY_LIST}
-              title="The currency the target, what you have and the contribution are in. Proposed from your base currency; change it and it stays as you typed it."
+              title={tr("goals.currencyTitle")}
               value={currency}
               onChange={(e) => setCurrencyChoice(e.target.value)}
             />
@@ -213,10 +275,10 @@ export default function Goals() {
         {rr && <RequiredReturnNote rr={rr} />}
 
         <div className="flex items-center gap-2">
-          <button className={btnClass} disabled={submitting}>{submitting ? "..." : editId != null ? "Save goal" : "Add goal"}</button>
+          <button className={btnClass} disabled={submitting}>{submitting ? "..." : editId != null ? tr("goals.save") : tr("goals.add")}</button>
           {editId != null && (
             <button type="button" onClick={reset} className="rounded-sm px-3 py-2 text-sm text-ink-soft hover:text-ink">
-              Cancel
+              {tr("common.cancel")}
             </button>
           )}
         </div>
@@ -224,14 +286,14 @@ export default function Goals() {
 
       {error && <p className="text-down">{error}</p>}
 
-      <RowsOrEmpty loading={false} error={null} empty={items.length === 0} emptyText="No goals yet.">
+      <RowsOrEmpty loading={false} error={null} empty={items.length === 0} emptyText={tr("goals.empty")}>
         {items.map((g) => (
           <Row
             key={g.id}
             onEdit={() => startEdit(g)}
             onDelete={() => remove(g)}
             title={typeLabel(g.type) ?? g.name}
-            subtitle={[g.name !== typeLabel(g.type) ? g.name : null, goalSubtitle(g)]
+            subtitle={[g.name !== englishTypeLabel(g.type) ? g.name : null, goalSubtitle(g)]
               .filter(Boolean)
               .join(" · ") || undefined}
             note={g.notes}
@@ -244,6 +306,7 @@ export default function Goals() {
 }
 
 function RequiredReturnNote({ rr }: { rr: RequiredReturnResult }) {
+  const tr = useT();
   const r = rr.required_annual_return;
   const tone =
     r === null || r > 0.12
@@ -251,10 +314,29 @@ function RequiredReturnNote({ rr }: { rr: RequiredReturnResult }) {
       : r > 0.08
         ? "bg-warn-tint text-warn"
         : "bg-up-tint text-up";
-  const rate = r === null ? "unreachable" : `${(r * 100).toFixed(1)}%/yr`;
+  const rate =
+    r === null
+      ? tr("goals.rateUnreachable")
+      : tr("goals.ratePerYear", { pct: (r * 100).toFixed(1) });
   return (
     <p className={"rounded-sm p-3 text-sm " + tone}>
-      Over ~{rr.years} years this requires a return of <strong>{rate}</strong>. {rr.assessment}
+      {/* `**{rate}**` lives in the catalogue, so the translation can move the
+          emphasis to where its language wants it instead of the JSX deciding. */}
+      {tr
+        .rich("goals.requiredReturn", {
+          years: rr.years,
+          rate,
+          assessment: assessmentWords(rr.assessment),
+        })
+        .map((part, i) =>
+          part.kind === "strong" ? (
+            <strong key={i}>{part.value}</strong>
+          ) : part.kind === "em" ? (
+            <em key={i}>{part.value}</em>
+          ) : (
+            <Fragment key={i}>{part.value}</Fragment>
+          ),
+        )}
     </p>
   );
 }

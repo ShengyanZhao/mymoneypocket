@@ -6,6 +6,7 @@ import type { Institution } from "../api/institutions";
 import type { Liability } from "../api/liabilities";
 import type { RealAsset } from "../api/realAssets";
 import type { Snapshot } from "../api/snapshots";
+import { useT, type MessageKey } from "../i18n/index.ts";
 import type { Focus } from "../nav";
 
 /* Records groups everything you ENTER — institutions and dated situations,
@@ -13,24 +14,24 @@ import type { Focus } from "../nav";
    The app used to expose one tab per database table; grouping by activity
    (entering vs reading) is what took the nav from nine voices to five. */
 
-const PAGES = [
+const PAGES: { key: "wealth" | "real" | "debts" | "cash"; labelKey: MessageKey }[] = [
   {
     key: "wealth",
-    label: "Wealth",
+    labelKey: "nav.pages.wealth",
   },
   {
     key: "real",
-    label: "Real assets",
+    labelKey: "nav.pages.real",
   },
   {
     key: "debts",
-    label: "Debts",
+    labelKey: "nav.pages.debts",
   },
   {
     key: "cash",
-    label: "Cash flow",
+    labelKey: "nav.pages.cash",
   },
-] as const;
+];
 
 export type RecordsPage = (typeof PAGES)[number]["key"];
 
@@ -79,6 +80,7 @@ export default function Records({
   debt: Liability | null;
   onDebt: (l: Liability | null) => void;
 }) {
+  const tr = useT();
   const current = PAGES.find((p) => p.key === page) ?? PAGES[0];
 
   return (
@@ -96,7 +98,7 @@ export default function Records({
                 : "border-transparent text-ink-soft hover:text-ink")
             }
           >
-            {p.label}
+            {tr(p.labelKey)}
           </button>
         ))}
       </nav>

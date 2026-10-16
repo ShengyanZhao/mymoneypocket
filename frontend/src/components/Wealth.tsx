@@ -1,4 +1,5 @@
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
+import { tOpt, useT, type T } from "../i18n/index.ts";
 import {
   createInstitution,
   deleteInstitution,
@@ -53,16 +54,33 @@ import {
   type Crumb,
   CURRENCY_LIST,
 } from "./ui";
-import { CancelButton, money, policyWord } from "./ui";
+import { CancelButton, money } from "./ui";
 import { accountCurrencyOn, listingCurrencyOf } from "./proposedCurrency";
 import { CASH_ANCHOR, INSTITUTION, holding, marks, refusal } from "./required";
 import { absentTickerCost } from "./absentTicker";
 import { DatedAmountEditor } from "./DatedAmountEditor";
 import { classOnSave, sortIntoBuckets, type Bucket } from "./buckets";
 import { GONE, reread } from "./reopen";
-import { dayCount, daysAgo } from "./calendarDays";
+import { daysAgo } from "./calendarDays";
 import { closeTooFar } from "./closeGap";
-import { dividendWord } from "./dividendLine";
+
+/** The class of a bucket, to the words its heading says. `bucket.label` is the
+    English one in `buckets.ts`, which is pure and testable; the reader's
+    language is chosen here, where the heading is drawn. */
+const BUCKET_LABEL_KEY: Record<string, Parameters<T>[0]> = {
+  equity: "wealth.bucket.stocks",
+  bond: "wealth.bucket.bonds",
+  commodity: "wealth.bucket.commodities",
+  crypto: "wealth.bucket.crypto",
+  other: "wealth.bucket.other",
+};
+
+/** A stated distribution policy in the reader's words; the stored token stays
+    "acc"/"dist" and an unknown one is shown as stored. */
+function policyWords(tr: T, p: string | null | undefined): string | null {
+  if (!p) return null;
+  return p === "acc" ? tr("wealth.policyAcc") : p === "dist" ? tr("wealth.policyDist") : p;
+}
 
 // The occasional, destructive twin of a primary action: same size, same
 // shape, warning colour. `btnClass` is for the action you take every time;
@@ -133,11 +151,12 @@ export default function Wealth({
     };
   }, [arrived, onInstitution, onSnapshot]);
 
+  const tr = useT();
   if (!checked) return null;
 
   const crumbs: Crumb[] = [
     {
-      label: "Institutions",
+      label: tr("wealth.institutions"),
       active: !institution,
       onClick: () => {
         onInstitution(null);
@@ -167,6 +186,7 @@ export default function Wealth({
 }
 
 function InstitutionsLevel({ onSelect }: { onSelect: (i: Institution) => void }) {
+  const tr = useT();
   const [items, setItems] = useState<Institution[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -189,7 +209,7 @@ function InstitutionsLevel({ onSelect }: { onSelect: (i: Institution) => void })
     try {
       setItems(await getInstitutions());
     } catch (err) {
-      setError(apiError(err, "Could not reach the backend. Is it running on :8000?"));
+      setError(apiError(err, tr("wealth.backendUnreachable")));
     } finally {
       setLoading(false);
     }
@@ -223,34 +243,34 @@ function InstitutionsLevel({ onSelect }: { onSelect: (i: Institution) => void })
       reset();
       await load();
     } catch (err) {
-      setFormError(apiError(err, "Save failed."));
+      setFormError(apiError(err, tr("common.saveFailed")));
     } finally {
       setSubmitting(false);
     }
   }
 
   async function remove(it: Institution) {
-    if (!window.confirm(`Delete "${it.name}"? This also removes its situations, holdings and cash anchors.`)) return;
+    if (!window.confirm(tr("wealth.deleteInstitution", { name: it.name }))) return;
     setError(null);
     try {
       await deleteInstitution(it.id);
       if (editId === it.id) reset();
       await load();
     } catch (err) {
-      setError(apiError(err, "Delete failed."));
+      setError(apiError(err, tr("wealth.deleteFailed")));
     }
   }
 
   return (
-    <Section title="Institutions">
+    <Section title={tr("wealth.institutions")}>
       <form onSubmit={submit} className="flex flex-wrap gap-2">
-        <input className={inputClass} aria-label="Name of the bank or broker" {...marks(INSTITUTION, "name")} value={name} onChange={(e) => setName(e.target.value)} />
-        <input className={inputClass} placeholder="Type (e.g. bank)" value={type} onChange={(e) => setType(e.target.value)} />
-        <button className={btnClass} disabled={submitting}>{submitting ? "..." : editId != null ? "Save" : "Add"}</button>
+        <input className={inputClass} aria-label={tr("wealth.nameOfBankOrBroker")} {...marks(INSTITUTION, "name")} value={name} onChange={(e) => setName(e.target.value)} />
+        <input className={inputClass} placeholder={tr("wealth.typePlaceholder")} value={type} onChange={(e) => setType(e.target.value)} />
+        <button className={btnClass} disabled={submitting}>{submitting ? "..." : editId != null ? tr("common.save") : tr("common.add")}</button>
         {editId != null && <CancelButton onClick={reset} />}
       </form>
       {formError && <p className="text-down">{formError}</p>}
-      <RowsOrEmpty loading={loading} error={error} empty={items.length === 0} emptyText="No institutions yet.">
+      <RowsOrEmpty loading={loading} error={error} empty={items.length === 0} emptyText={tr("wealth.noInstitutions")}>
         {items.map((it) => (
           <Row
             key={it.id}
@@ -258,16 +278,16 @@ function InstitutionsLevel({ onSelect }: { onSelect: (i: Institution) => void })
             onEdit={() => startEdit(it)}
             onDelete={() => remove(it)}
             title={it.name}
-            badge={it.type}
+            badge={it.type ? (tOpt(`code.${it.type}`) ?? it.type) : null}
             // "One situation" is worth saying out loud: it means there is no
             // history here at all — nothing for the wealth chart to draw
             // between, and every quantity as old as that single day.
             subtitle={
               it.snapshot_count === 0
-                ? "no situation recorded yet"
+                ? tr("wealth.noSituationYet")
                 : it.snapshot_count === 1
-                  ? `one situation only (${it.latest_snapshot}): no history to compare against yet`
-                  : `${it.snapshot_count} situations · latest ${it.latest_snapshot}`
+                  ? tr("wealth.oneSituationOnly", { date: it.latest_snapshot })
+                  : tr("wealth.situationsCount", { count: it.snapshot_count, date: it.latest_snapshot })
             }
             note={it.notes}
           />
@@ -346,6 +366,7 @@ function CashRegister({
   institution: Institution;
   go: (f: Focus) => void;
 }) {
+  const tr = useT();
   const [position, setPosition] = useState<CashPosition | null>(null);
   const [anchors, setAnchors] = useState<CashAnchor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -367,7 +388,7 @@ function CashRegister({
       setPosition(pos);
       setAnchors(anc);
     } catch (err) {
-      setError(apiError(err, "Could not load this account's cash."));
+      setError(apiError(err, tr("wealth.loadCash")));
     } finally {
       setLoading(false);
     }
@@ -375,15 +396,15 @@ function CashRegister({
 
   return (
     <Section
-      title="Cash"
+      title={tr("wealth.cash")}
       aside={
         // Nothing while it loads, as the investments half does: "unknown"
         // is for a position that failed to load, not one still on its way.
         !position && loading ? undefined : (
           <span className="text-right text-sm text-ink-soft">
-            today{" "}
+            {tr("wealth.today")}{" "}
             <span className="text-xl font-semibold text-ink">
-              {position ? money(position.base_currency).format(position.projected) : "unknown"}
+              {position ? money(position.base_currency).format(position.projected) : tr("wealth.unknown")}
             </span>
           </span>
         )
@@ -391,36 +412,39 @@ function CashRegister({
     >
       {position && position.anchor_date && (
         <p className="text-xs text-ink-soft">
-          From anchor {money(position.base_currency).format(position.anchor_amount)} on {position.anchor_date}:{" "}
-          <Term go={go} to="income" dest="Records → Cash flow, where income is entered">
-            + income {money(position.base_currency).format(position.income)}
+          {tr("wealth.fromAnchor", {
+            amount: money(position.base_currency).format(position.anchor_amount),
+            date: position.anchor_date,
+          })}{" "}
+          <Term go={go} to="income" dest={tr("wealth.destIncome")}>
+            {tr("wealth.termIncome", { amount: money(position.base_currency).format(position.income) })}
           </Term>{" "}
-          <Term go={go} to="expenses" dest="Records → Cash flow, where expenses are entered">
-            − expenses {money(position.base_currency).format(position.expenses)}
+          <Term go={go} to="expenses" dest={tr("wealth.destExpenses")}>
+            {tr("wealth.termExpenses", { amount: money(position.base_currency).format(position.expenses) })}
           </Term>{" "}
           ·{" "}
-          <Term go={go} to="transfers" dest="Records → Cash flow, where transfers are entered">
-            transfers +{money(position.base_currency).format(position.transfers_in)} / −
-            {money(position.base_currency).format(position.transfers_out)}
+          <Term go={go} to="transfers" dest={tr("wealth.destTransfers")}>
+            {tr("wealth.termTransfers", {
+              in: money(position.base_currency).format(position.transfers_in),
+              out: money(position.base_currency).format(position.transfers_out),
+            })}
           </Term>{" "}
-          <Term go={go} to="ledger" dest="Portfolio's ledger, where purchases are entered">
-            − buys {money(position.base_currency).format(position.buys)}
+          <Term go={go} to="ledger" dest={tr("wealth.destBuys")}>
+            {tr("wealth.termBuys", { amount: money(position.base_currency).format(position.buys) })}
           </Term>{" "}
-          <Term go={go} to="ledger" dest="Portfolio's ledger, where sales and dividends are entered">
-            + sells/dividends {money(position.base_currency).format(position.sells)}
+          <Term go={go} to="ledger" dest={tr("wealth.destSells")}>
+            {tr("wealth.termSells", { amount: money(position.base_currency).format(position.sells) })}
           </Term>
         </p>
       )}
       {position && !position.anchor_date && anchors.length === 0 && (
         <p className="text-xs text-warn">
-          No anchor yet. Add the actual cash you held at a date below. Linked salaries, costs and
-          transfers after that date are then projected automatically.
+          {tr("wealth.noAnchorYet")}
         </p>
       )}
       {position && !position.anchor_date && anchors.length > 0 && (
         <p className="text-xs text-warn">
-          Your earliest anchor is dated {anchors[0].date}, which is in the future, so cash will start
-          projecting from that date. If you meant "today", edit it with ✎.
+          {tr("wealth.anchorInFuture", { date: anchors[0].date })}
         </p>
       )}
 
@@ -430,7 +454,7 @@ function CashRegister({
         loadError={error}
         dateOf={(a) => a.date}
         amountOf={(a) => a.amount}
-        subtitleOf={() => "actual balance"}
+        subtitleOf={() => tr("wealth.actualBalance")}
         currencyOf={(a) => a.currency}
         // An anchor is where an account's currency is SAID, and every proposal
         // elsewhere reads it back: a second anchor opening at the new-row
@@ -454,17 +478,17 @@ function CashRegister({
         // balance before it, or, for the only one, is not projected at all.
         deleteMoves={(a) => cashAnchorDeletion(a.id)}
         onChanged={load}
-        noun="cash anchor"
-        dateLabel="balance on"
+        noun={tr("dated.noun.cashAnchor")}
+        dateLabel={tr("wealth.balanceOn")}
         // Today, because the common case is typing in the cash you are holding
         // as you read it — unlike a valuation, which is as of a day on a
         // statement and should be picked deliberately.
         blankDate={todayISO()}
-        amountLabel="Actual cash"
+        amountLabel={tr("wealth.actualCash")}
         needs={CASH_ANCHOR}
         amountWidth="w-32"
-        addLabel="Add anchor"
-        emptyText="No anchors yet."
+        addLabel={tr("wealth.addAnchor")}
+        emptyText={tr("wealth.noAnchors")}
       />
     </Section>
   );
@@ -477,6 +501,7 @@ function SnapshotsLevel({
   institution: Institution;
   onSelect: (s: Snapshot) => void;
 }) {
+  const tr = useT();
   const [items, setItems] = useState<Snapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -569,7 +594,7 @@ function SnapshotsLevel({
         setHeldUnknown(true);
       }
     } catch (err) {
-      setError(apiError(err, "Could not load situations."));
+      setError(apiError(err, tr("wealth.loadSituations")));
     } finally {
       setLoading(false);
     }
@@ -612,15 +637,15 @@ function SnapshotsLevel({
       !window.confirm(
         // One multi-line template literal, so the dialog's shape is visible
         // in the source instead of reconstructed from escapes.
-        `An empty situation becomes this account's authority for ${date}.
+        `${tr("wealth.dialogAuthority", { date })}
 
-${held.length === 1 ? "This position" : `These ${held.length} positions`} will leave your net worth unless you re-enter ${held.length === 1 ? "it" : "them"} here:
+${tr("wealth.dialogLeaves", { count: held.length })}
 
     ${held.map((r) => r.asset_name).join(" \u00b7 ")}
 
-They will be reported as unaccounted for, not removed in silence.
+${tr("wealth.dialogReported")}
 
-\u201cStart from the last one\u201d keeps them. Continue anyway?`,
+\u201c${tr("wealth.startFromLast")}\u201d ${tr("wealth.dialogKeeps")}`,
       )
     )
       return;
@@ -630,7 +655,7 @@ They will be reported as unaccounted for, not removed in silence.
     try {
       await createSnapshot(institution.id, { date });
     } catch (err) {
-      setFormError(apiError(err, "Creation failed."));
+      setFormError(apiError(err, tr("wealth.creationFailed")));
     } finally {
       // Reloaded even on failure: a refusal about a date can only point at the
       // situation holding it if the list in hand is the current one.
@@ -655,11 +680,15 @@ They will be reported as unaccounted for, not removed in silence.
       });
       setPrefillNote(
         s.needs_attention.length
-          ? `Copied from ${s.copied_from}. ${s.repriced.length} priced from the market. Only ${s.needs_attention.join(", ")} still needs you.`
-          : `Copied from ${s.copied_from}, all ${s.repriced.length} positions priced from the market.`,
+          ? tr("wealth.copiedNeedsAttention", {
+              date: s.copied_from,
+              n: s.repriced.length,
+              names: s.needs_attention.join(", "),
+            })
+          : tr("wealth.copiedAll", { date: s.copied_from, n: s.repriced.length }),
       );
     } catch (err) {
-      setFormError(apiError(err, "Could not start from the previous situation."));
+      setFormError(apiError(err, tr("wealth.couldNotPrefill")));
     } finally {
       await load();
       setSubmitting(false);
@@ -667,20 +696,20 @@ They will be reported as unaccounted for, not removed in silence.
   }
 
   async function remove(s: Snapshot) {
-    if (!window.confirm(`Delete the situation of ${s.date}? This also removes its holdings.`)) return;
+    if (!window.confirm(tr("wealth.deleteSituation", { date: s.date }))) return;
     setError(null);
     setFormError(null);
     try {
       await deleteSnapshot(s.id);
       await load();
     } catch (err) {
-      setError(apiError(err, "Delete failed."));
+      setError(apiError(err, tr("wealth.deleteFailed")));
     }
   }
 
   return (
     <Section
-      title="Investment situations"
+      title={tr("wealth.investmentSituations")}
       /* The other half of "how much do I have here?". The page already had
          these rows: `held` is fetched for the omissions notice and for the
          dialog that names what an empty situation would drop, so this is the
@@ -708,13 +737,13 @@ They will be reported as unaccounted for, not removed in silence.
            there is not being quiet, it is letting a stale row answer for it. */
         loading ? undefined : (
           <span className="text-right text-sm text-ink-soft">
-            held{" "}
+            {tr("wealth.held")}{" "}
             <span className="text-xl font-semibold text-ink">
-              {heldUnknown || heldBase == null ? "unknown" : money(heldBase).format(heldTotal)}
+              {heldUnknown || heldBase == null ? tr("wealth.unknown") : money(heldBase).format(heldTotal)}
             </span>
             {heldUnknown ? (
               <span className="block text-xs text-warn">
-                the portfolio did not load: this is not a zero
+                {tr("wealth.portfolioNotLoaded")}
               </span>
             ) : (
               heldCarried > 0 &&
@@ -735,16 +764,16 @@ They will be reported as unaccounted for, not removed in silence.
                       much of the total is a figure somebody recorded, not one
                       a market quoted today. */}
                   {heldCarried === heldTotal
-                    ? "carried from what was recorded, not priced"
-                    : `${money(heldBase).format(heldCarried)} of it carried from what was recorded, not priced`}
+                    ? tr("wealth.carriedAll")
+                    : tr("wealth.carriedSome", { amount: money(heldBase).format(heldCarried) })}
                 </span>
               )
             )}
           </span>
         )
       }
-      hint="Your investment positions at a date. Cash lives in the Cash section above."
-      note="To update, start a new date from the previous one. Editing an old situation rewrites what that day said."
+      hint={tr("wealth.situationsHint")}
+      note={tr("wealth.situationsNote")}
     >
       {/* What this account has already failed to account for, on the page where
           the situation that did it is written. The Dashboard and the Portfolio
@@ -755,10 +784,10 @@ They will be reported as unaccounted for, not removed in silence.
           purpose: the outstanding question comes before the chance to declare
           another situation on top of it. */}
       {heldBase != null && (
-        <OmissionsNotice items={missing} arrivals={instead} where="in Portfolio" baseCurrency={heldBase} />
+        <OmissionsNotice items={missing} arrivals={instead} where={tr("omitted.inPortfolio")} baseCurrency={heldBase} />
       )}
       <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
-        <input className={inputClass} type="date" aria-label="Date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <input className={inputClass} type="date" aria-label={tr("dashboard.date")} value={date} onChange={(e) => setDate(e.target.value)} />
         <button
           type="button"
           onClick={prefill}
@@ -766,11 +795,11 @@ They will be reported as unaccounted for, not removed in silence.
           className={btnClass}
           title={
             items.length === 0
-              ? "There is nothing to start from yet: this account's first situation has to be declared."
-              : "Copies the positions and quantities of the latest situation, re-prices everything with a ticker at this date, and tells you which rows still need you"
+              ? tr("wealth.nothingToStartFrom")
+              : tr("wealth.startFromLastTitle")
           }
         >
-          {submitting ? "..." : "Start from the last one"}
+          {submitting ? "..." : tr("wealth.startFromLast")}
         </button>
         {/* The destructive one, and it used to be the smallest thing here:
             lowercase text beside a solid button, reading as a link while being
@@ -790,11 +819,11 @@ They will be reported as unaccounted for, not removed in silence.
           disabled={submitting || !date || taken !== null}
           title={
             held.length === 0
-              ? "Declare from scratch what this account holds at this date."
-              : `An empty situation becomes this account's authority: the ${held.length} position${held.length === 1 ? "" : "s"} recorded here leave your net worth unless you re-enter them.`
+              ? tr("wealth.declareFromScratch")
+              : tr("wealth.emptySituationAuthority", { count: held.length })
           }
         >
-          {items.length === 0 ? "Declare the first situation" : "Start empty"}
+          {items.length === 0 ? tr("wealth.declareFirst") : tr("wealth.startEmpty")}
         </button>
       </form>
       {prefillNote && (
@@ -809,20 +838,20 @@ They will be reported as unaccounted for, not removed in silence.
           reader had to discover for themselves. */}
       {taken ? (
         <p className={noticeClass}>
-          {asSentence(formError ?? `${taken.date} already has a situation`)}{" "}
+          {asSentence(formError ?? tr("wealth.dateTaken", { date: taken.date }))}{" "}
           <button
             type="button"
             onClick={() => onSelect(taken)}
             className="font-medium underline underline-offset-2 hover:no-underline"
           >
-            Open it
+            {tr("wealth.openIt")}
           </button>
-          , or pick another date to record a new one.
+          {tr("wealth.orPickAnotherDate")}
         </p>
       ) : formError ? (
         <p className={noticeClass}>{formError}</p>
       ) : null}
-      <RowsOrEmpty loading={loading} error={error} empty={items.length === 0} emptyText="No situations yet.">
+      <RowsOrEmpty loading={loading} error={error} empty={items.length === 0} emptyText={tr("wealth.noSituations")}>
         {items.map((s) => (
           <Row key={s.id} onClick={() => onSelect(s)} onDelete={() => remove(s)} title={s.date} note={s.note} value={money(s.base_currency).format(s.value_base)} />
         ))}
@@ -832,6 +861,7 @@ They will be reported as unaccounted for, not removed in silence.
 }
 
 function SituationDetail({ snapshot }: { snapshot: Snapshot }) {
+  const tr = useT();
   const [holdings, setHoldings] = useState<Holding[]>([]);
   // What a new position's currency is proposed from: the listing's when the
   // price cache knows it, and otherwise the account's on this situation's date.
@@ -857,7 +887,7 @@ function SituationDetail({ snapshot }: { snapshot: Snapshot }) {
       setAnchors(a);
       setListing(l);
     } catch (err) {
-      setError(apiError(err, "Could not load holdings."));
+      setError(apiError(err, tr("wealth.loadHoldings")));
     } finally {
       setLoading(false);
     }
@@ -876,20 +906,19 @@ function SituationDetail({ snapshot }: { snapshot: Snapshot }) {
   const ageDays = daysAgo(snapshot.date);
   const isPast = ageDays > 0;
 
-  if (loading) return <p className="text-ink-soft">Loading…</p>;
+  if (loading) return <p className="text-ink-soft">{tr("common.loading")}</p>;
   if (error) return <p className="text-down">{error}</p>;
 
   return (
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-lg font-semibold text-ink">Situation: {snapshot.date}</h2>
+        <h2 className="text-lg font-semibold text-ink">{tr("wealth.situationOf", { date: snapshot.date })}</h2>
         <span className="text-sm text-ink-soft">
-          Total <span className="font-semibold text-ink">{money(baseCurrency).format(total)}</span>
+          {tr("wealth.total")} <span className="font-semibold text-ink">{money(baseCurrency).format(total)}</span>
         </span>
       </div>
       <p className="text-sm text-ink-soft">
-        Cash is not entered here: it belongs in this account's Cash section, and a deposit entered in both
-        is counted twice.
+        {tr("wealth.cashNotEnteredHere")}
       </p>
       {/* Editing today's photograph is ordinary bookkeeping — you are still
           filling it in. Editing an old one rewrites what that day SAID, which
@@ -898,10 +927,19 @@ function SituationDetail({ snapshot }: { snapshot: Snapshot }) {
       {isPast && (
         <p
           className="border-l-2 border-warn bg-warn-tint px-3 py-2 text-sm text-warn"
-          title="Editing an old situation rewrites what that day said, so the wealth chart will show today's figures as if they had been true back then, and P/L vs recorded collapses, because the photograph starts chasing the market."
+          title={tr("wealth.oldSituationTitle")}
         >
-          Situation of <b>{snapshot.date}</b>, {dayCount(ageDays)} ago: editing here rewrites
-          what that day said. For today, use “Start from the last one”.
+          {tr
+            .rich("wealth.oldSituation", { date: snapshot.date, count: ageDays })
+            .map((p, i) =>
+              p.kind === "strong" ? (
+                <strong key={i}>{p.value}</strong>
+              ) : p.kind === "em" ? (
+                <em key={i}>{p.value}</em>
+              ) : (
+                <span key={i}>{p.value}</span>
+              ),
+            )}
         </p>
       )}
       {/* Every holding in exactly one bucket, or the buckets stop adding up to
@@ -949,6 +987,7 @@ function BucketSection({
   listing: Record<string, string>;
   onChanged: () => Promise<void> | void;
 }) {
+  const tr = useT();
   const [editId, setEditId] = useState<number | null>(null);
   // The class of the row being edited, kept as it was: a bucket shows more than
   // one class, and saving must not rename a `fund_etf` to the bucket's `equity`.
@@ -1097,21 +1136,21 @@ function BucketSection({
       reset();
       await onChanged();
     } catch (err) {
-      setError(apiError(err, "Save failed."));
+      setError(apiError(err, tr("common.saveFailed")));
     } finally {
       setSubmitting(false);
     }
   }
 
   async function remove(h: Holding) {
-    if (!window.confirm(`Remove "${h.asset_name}"?`)) return;
+    if (!window.confirm(tr("wealth.deleteHolding", { name: h.asset_name }))) return;
     setError(null);
     try {
       await deleteHolding(h.id);
       if (editId === h.id) reset();
       await onChanged();
     } catch (err) {
-      setError(apiError(err, "Delete failed."));
+      setError(apiError(err, tr("wealth.deleteFailed")));
     }
   }
 
@@ -1134,9 +1173,7 @@ function BucketSection({
       const q = await getQuote(symbol.trim());
       if (closeTooFar(snapshotDate, q.as_of)) {
         setError(
-          `This situation is dated ${snapshotDate} but the price is from ${q.as_of}. ` +
-            "Dividing one by the other would invent a quantity you never held. " +
-            "Enter the units from your broker instead.",
+          tr("wealth.deriveTooFar", { situation: snapshotDate, price: q.as_of }),
         );
         return;
       }
@@ -1148,11 +1185,16 @@ function BucketSection({
       const listed = q.currency;
       if (listed) setLearned((prev) => ({ ...prev, [q.symbol]: listed }));
       setPriceNote(
-        `${value} ÷ ${q.price} = ${units.toFixed(8)} units of ${q.name ?? q.symbol} ` +
-          `(close of ${q.as_of}). Derived, so check it against your broker.`,
+        tr("wealth.derivedUnits", {
+          value,
+          price: q.price,
+          units: units.toFixed(8),
+          name: q.name ?? q.symbol,
+          date: q.as_of,
+        }),
       );
     } catch (err) {
-      setError(apiError(err, "Could not price that ticker, so the units cannot be worked out."));
+      setError(apiError(err, tr("wealth.couldNotPrice")));
     } finally {
       setFetchingPrice(false);
     }
@@ -1178,9 +1220,13 @@ function BucketSection({
       // returns a believable price, so the name is the only thing that can
       // tell you it is the wrong fund.
       setPriceNote(
-        `✓ ${q.name ?? q.symbol}${resolved ? ` → ${resolved}` : ""}: ${q.price} ${
-          q.currency ?? ""
-        } (last close ${q.as_of})`,
+        tr("wealth.quoteOk", {
+          name: q.name ?? q.symbol,
+          resolved: resolved ? ` → ${resolved}` : "",
+          price: q.price,
+          currency: q.currency ?? "",
+          date: q.as_of,
+        }),
       );
     } catch (err) {
       setPriceNote(null);
@@ -1190,8 +1236,8 @@ function BucketSection({
       const status = (err as { response?: { status?: number } })?.response?.status;
       setError(
         status === 503
-          ? "⚠ Could not reach the market, so your symbol may well be correct. Nothing answered, so this says nothing about it. Try again when you are online."
-          : "✗ No market match. A bare ticker won't work: add the exchange suffix (VWCE.MI for Borsa Italiana, .DE for Xetra, none for US) or paste the fund's ISIN.",
+          ? tr("wealth.marketUnreachable")
+          : tr("wealth.noMarketMatch"),
       );
     } finally {
       setFetchingPrice(false);
@@ -1205,7 +1251,7 @@ function BucketSection({
       await refreshHoldingPrice(h.id);
       await onChanged();
     } catch (err) {
-      setError(apiError(err, `Price refresh failed for "${h.asset_name}". Check its symbol.`));
+      setError(apiError(err, tr("wealth.refreshFailed", { name: h.asset_name })));
     } finally {
       setRefreshingId(null);
     }
@@ -1226,8 +1272,19 @@ function BucketSection({
     else if (foreign && h.value != null)
       parts.push(`${h.value.toLocaleString(locale, { maximumFractionDigits: 2 })} ${foreign}`);
     // The stated policy, or, with none stated, when the holding last paid: its
-    // own history is what decides its dividends then (`dividendLine`).
-    const dividends = dividendWord(h.distribution_policy, h.last_dividend);
+    // own history is what decides its dividends then (`dividendLine`). The
+    // stored token stays "acc"/"dist" — only the words the reader sees change.
+    const p = h.distribution_policy;
+    const dividends =
+      p === "acc"
+        ? tr("wealth.policyAcc")
+        : p === "dist"
+          ? tr("wealth.policyDist")
+          : p
+            ? p
+            : h.last_dividend
+              ? tr("wealth.lastDividend", { date: h.last_dividend })
+              : null;
     if (dividends) parts.push(dividends);
     return parts.length ? parts.join(" · ") : undefined;
   }
@@ -1235,7 +1292,7 @@ function BucketSection({
   return (
     <section className={cardClass + " p-4"}>
       <div className="mb-3 flex items-baseline justify-between">
-        <h3 className="text-sm font-semibold text-ink">{bucket.label}</h3>
+        <h3 className="text-sm font-semibold text-ink">{tr(BUCKET_LABEL_KEY[bucket.cls] ?? "wealth.bucket.other")}</h3>
         <span className="text-sm font-medium text-ink-soft">{money(baseCurrency).format(subtotal)}</span>
       </div>
 
@@ -1256,9 +1313,9 @@ function BucketSection({
               setIsin(c.isin);
               if (c.distribution_policy) setDistPolicy(c.distribution_policy);
               setPickNote(
-                [c.isin, policyWord(c.distribution_policy)].filter(Boolean).join(" · ") +
-                  " from the catalogue. The ticker is still yours to give: this fund" +
-                  " trades under a different symbol on each exchange.",
+                tr("wealth.pickCatalogue", {
+                  identity: [c.isin, policyWords(tr, c.distribution_policy)].filter(Boolean).join(" · "),
+                }),
               );
               return;
             }
@@ -1269,20 +1326,24 @@ function BucketSection({
             setSymbol(c.symbol);
             setPickNote(
               c.source === "owned"
-                ? `${c.symbol}: the symbol already on your position${
-                    c.institution ? ` at ${c.institution}` : ""
-                  }.`
-                : `${c.symbol} on ${c.exchange ?? "its exchange"}: checking what it prices…`,
+                ? tr("wealth.pickOwned", {
+                    symbol: c.symbol,
+                    at: c.institution ? tr("wealth.atInstitution", { name: c.institution }) : "",
+                  })
+                : tr("wealth.pickChecking", {
+                    symbol: c.symbol,
+                    exchange: c.exchange ?? tr("wealth.itsExchange"),
+                  }),
             );
             void fetchPrice(true);
           }}
         />
         <input
           className={inputClass + " w-44"}
-          placeholder="Ticker or ISIN"
-          aria-label="Ticker or ISIN"
+          placeholder={tr("wealth.tickerOrIsin")}
+          aria-label={tr("wealth.tickerOrIsin")}
           aria-describedby={tickerCost ? tickerCostId : undefined}
-          title="Yahoo ticker WITH the exchange suffix (VWCE.MI = Borsa Italiana, SAP.DE = Xetra, no suffix = US, BTC-EUR = crypto). A bare ticker like 'VWCE' won't match. An ISIN (e.g. IE00BK5BQT80) works too. Prefer a EUR listing so prices need no FX conversion."
+          title={tr("wealth.tickerTitle")}
           value={symbol}
           onChange={(e) => setSymbol(e.target.value)}
           onBlur={() => {
@@ -1292,10 +1353,10 @@ function BucketSection({
         {isinShown ? (
           <input
             className={inputClass + " w-40"}
-            placeholder="ISIN (optional)"
+            placeholder={tr("wealth.isinOptional")}
             aria-label="ISIN"
             autoFocus={isinOpen}
-            title="The fund's ISIN. The ticker prices the position; the ISIN is what the look-through sources use to see inside it: the same fund has a different ticker on each exchange, so one field cannot do both."
+            title={tr("wealth.isinTitle")}
             value={isin}
             onChange={(e) => setIsin(e.target.value)}
           />
@@ -1303,7 +1364,7 @@ function BucketSection({
           <button
             type="button"
             aria-expanded={false}
-            aria-label="Add the fund's ISIN"
+            aria-label={tr("wealth.addIsin")}
             onClick={() => setIsinOpen(true)}
             className="rounded-sm border border-rule px-2 py-2 text-xs text-ink-soft transition hover:border-olive hover:text-olive"
           >
@@ -1314,47 +1375,47 @@ function BucketSection({
           className={inputClass + " w-36"}
           type="number"
           step="0.01"
-          placeholder="cost (optional)"
-          aria-label="Cost"
-          title="What this position cost you in total, in its own currency. Leave it empty if you do not know: an empty cost reads as 'cost unknown', which is true, whereas a guess would let the P/L present a movement as a profit."
+          placeholder={tr("wealth.costPlaceholder")}
+          aria-label={tr("wealth.costLabel")}
+          title={tr("wealth.costTitle")}
           value={cost}
           onChange={(e) => setCost(e.target.value)}
         />
-        <select className={inputClass} aria-label="Dividend policy" value={distPolicy} onChange={(e) => setDistPolicy(e.target.value)} title="From its history: the app reads this holding's dividends on Yahoo once a day and credits each one to this institution's cash, which is how a share works. Distributing: the same, as you or the catalogue stated it. Accumulating: no dividend is recorded (a fund that reinvests them).">
-          <option value="">from its history</option>
-          <option value="acc">Accumulating</option>
-          <option value="dist">Distributing</option>
+        <select className={inputClass} aria-label={tr("wealth.dividendPolicy")} value={distPolicy} onChange={(e) => setDistPolicy(e.target.value)} title={tr("wealth.policyTitle")}>
+          <option value="">{tr("wealth.policyHistory")}</option>
+          <option value="acc">{tr("wealth.policyAcc")}</option>
+          <option value="dist">{tr("wealth.policyDist")}</option>
         </select>
-        <select className={inputClass} aria-label="How this position is entered" value={mode} onChange={(e) => setMode(e.target.value as "total" | "qty")}>
-          <option value="total">Total</option>
-          <option value="qty">Qty × price</option>
+        <select className={inputClass} aria-label={tr("wealth.howEntered")} value={mode} onChange={(e) => setMode(e.target.value as "total" | "qty")}>
+          <option value="total">{tr("wealth.modeTotal")}</option>
+          <option value="qty">{tr("wealth.modeQty")}</option>
         </select>
         {mode === "total" ? (
           <>
-            <input className={inputClass + " w-32"} type="number" step="0.01" aria-label="Value" {...marks(needs, "value")} value={value} onChange={(e) => setValue(e.target.value)} />
+            <input className={inputClass + " w-32"} type="number" step="0.01" aria-label={tr("wealth.value")} {...marks(needs, "value")} value={value} onChange={(e) => setValue(e.target.value)} />
             <button
               type="button"
               onClick={deriveQuantity}
               disabled={fetchingPrice || !symbol.trim() || !value}
-              title="Work out how many units that value is, at this instrument's price, so the position starts pricing itself instead of staying a number you have to maintain"
+              title={tr("wealth.toUnitsTitle")}
               className="rounded-sm border border-rule px-2 py-2 text-xs text-ink-soft transition hover:border-olive hover:text-olive disabled:opacity-50"
             >
-              {fetchingPrice ? "…" : "→ units"}
+              {fetchingPrice ? "…" : tr("wealth.toUnits")}
             </button>
           </>
         ) : (
           <>
-            <input className={inputClass + " w-24"} type="number" step="any" aria-label="Quantity" {...marks(needs, "quantity")} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+            <input className={inputClass + " w-24"} type="number" step="any" aria-label={tr("wealth.quantity")} {...marks(needs, "quantity")} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
             <span className="text-ink-faint">×</span>
-            <input className={inputClass + " w-28"} type="number" step="0.01" aria-label="Price" {...marks(needs, "unitPrice")} value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
+            <input className={inputClass + " w-28"} type="number" step="0.01" aria-label={tr("wealth.price")} {...marks(needs, "unitPrice")} value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
             <button
               type="button"
               onClick={() => fetchPrice(true)}
               disabled={fetchingPrice || !symbol.trim()}
-              title="Fetch the latest market price for this ticker"
+              title={tr("wealth.fetchPriceTitle")}
               className="rounded-sm border border-rule px-2 py-2 text-xs text-ink-soft transition hover:border-up hover:text-up disabled:opacity-50"
             >
-              {fetchingPrice ? "…" : "↻ live"}
+              {fetchingPrice ? "…" : tr("wealth.live")}
             </button>
             {computed != null && (
               <span className="text-xs text-ink-soft">= {money(currency).format(computed)}</span>
@@ -1363,14 +1424,14 @@ function BucketSection({
         )}
         <input
           className={inputClass + " w-20"}
-          placeholder="currency"
-          aria-label="Currency"
+          placeholder={tr("wealth.currency")}
+          aria-label={tr("wealth.currency")}
           list={CURRENCY_LIST}
-          title="The currency the value, the price and the cost are in. Proposed from the listing when its currency is known, otherwise from the account's anchor on this situation's date; change it and it stays as you typed it."
+          title={tr("wealth.currencyTitle")}
           value={currency}
           onChange={(e) => setCurrencyChoice(e.target.value)}
         />
-        <button className={btnClass} disabled={submitting}>{submitting ? "..." : editId != null ? "Save" : "Add"}</button>
+        <button className={btnClass} disabled={submitting}>{submitting ? "..." : editId != null ? tr("common.save") : tr("common.add")}</button>
         {editId != null && <CancelButton onClick={reset} />}
       </form>
 

@@ -11,18 +11,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  FIRST_PAYMENT_NOTE,
-  PLAN_DATE_LABEL,
-  PLAN_NOTE,
   addMonths,
   afterSaveLine,
+  firstPaymentNote,
   flowDateLabel,
   nextAfter,
   pastBuys,
   pastBuysWarning,
+  planDateLabel,
+  planNote,
   schedule,
   startsLine,
 } from "../src/components/firstDate.ts";
+import { setLocale } from "../src/i18n/t.ts";
+
+// The host's navigator is Chinese; these sentences are pinned in English.
+setLocale("en");
 
 const TODAY = "2026-10-05";
 const monthly = (start: string, end: string | null = null) => ({ start, frequency: "monthly", end });
@@ -170,9 +174,9 @@ test("a flow's date is its first payment, or the day a one-off happens", () => {
   assert.equal(flowDateLabel(""), "first payment");
   assert.equal(flowDateLabel("annual"), "first payment");
   assert.equal(flowDateLabel("one_off"), "on");
-  assert.equal(PLAN_DATE_LABEL, "first buy");
+  assert.equal(planDateLabel(), "first buy");
   assert.equal(
-    FIRST_PAYMENT_NOTE,
+    firstPaymentNote(),
     "The first payment's day is the day it repeats on. A past date is safe: payments before the account's latest balance are already in it.",
   );
 });
@@ -188,11 +192,11 @@ test("no sentence carries an em dash or an en dash", () => {
     w.button ?? "",
     startsLine(p.next),
     afterSaveLine("PAC All-World", p.next),
-    FIRST_PAYMENT_NOTE,
-    PLAN_NOTE,
+    firstPaymentNote(),
+    planNote(),
     flowDateLabel("monthly"),
     flowDateLabel("one_off"),
-    PLAN_DATE_LABEL,
+    planDateLabel(),
   ];
   const dashes = [String.fromCharCode(0x2013), String.fromCharCode(0x2014)];
   for (const t of texts) for (const d of dashes) assert.ok(!t.includes(d), t);

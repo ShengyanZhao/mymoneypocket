@@ -8,28 +8,33 @@
    bought by a PAC said its price was "derived from a reported return", and
    until brief AI it was not even marked.
 
+   Every sentence is looked up when it is said: a title arrives under a column
+   the reader may have just switched the language of.
+
    Pure, so `tests/costWords.test.ts` runs it under Node without a bundler. */
+
+import { t } from "../i18n/t.ts";
 
 type CostRow = { cost_known: boolean; cost_estimated: boolean };
 
 /** The title over a row's average price. */
 export function avgCostTitle(r: CostRow): string {
   if (!r.cost_known) {
-    return "No purchase price on record: this is the price the situation was recorded at, not what you paid";
+    return t("cost.avgCostUnknown");
   }
   if (r.cost_estimated) {
-    return "Average price paid, ESTIMATED in part: some or all of it is a plan's buy priced at a market close, or a cost derived from a reported return, not a contract note";
+    return t("cost.avgCostEstimated");
   }
-  return "Average price actually paid, from recorded purchases";
+  return t("cost.avgCostPaid");
 }
 
 /** The title over a row's profit or loss. */
 export function plTitle(r: CostRow): string {
   if (!r.cost_known) {
-    return "Movement since the situation was recorded, NOT profit: no purchase price is on record";
+    return t("cost.plUnknown");
   }
   if (r.cost_estimated) {
-    return "Profit or loss against a purchase price ESTIMATED in part (a plan's buy at a market close, or a cost derived from a reported return): real, but not verified against a contract note";
+    return t("cost.plEstimated");
   }
-  return "Profit or loss against the average price you paid";
+  return t("cost.plPaid");
 }

@@ -13,14 +13,23 @@
    "Distributing" would hide and a cut-off would decide for the reader. One that
    never paid says nothing.
 
-   Pure, and with no runtime imports, so `tests/dividendLine.test.ts` runs it
-   under Node without a bundler. */
+   The words come from the catalogue at the moment they are said, so a language
+   switch reaches the line too.
+
+   Pure, and with no runtime imports besides the catalogue, so
+   `tests/dividendLine.test.ts` runs it under Node without a bundler. */
+
+import { t } from "../i18n/t.ts";
 
 /** A stated policy in the words a reader sees. A token this does not know is
     shown as stored rather than dropped. */
 export function policyWord(p: string | null | undefined): string | null {
   if (!p) return null;
-  return p === "acc" ? "Accumulating" : p === "dist" ? "Distributing" : p;
+  return p === "acc"
+    ? t("dividend.accumulating")
+    : p === "dist"
+      ? t("dividend.distributing")
+      : p;
 }
 
 /** What the line says: the stated policy, or, with none stated, the last
@@ -29,5 +38,8 @@ export function dividendWord(
   policy: string | null | undefined,
   lastDividend: string | null | undefined,
 ): string | null {
-  return policyWord(policy) ?? (lastDividend ? `last dividend ${lastDividend}` : null);
+  return (
+    policyWord(policy) ??
+    (lastDividend ? t("dividend.last", { date: lastDividend }) : null)
+  );
 }

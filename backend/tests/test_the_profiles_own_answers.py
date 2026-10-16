@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from conftest import _empty_every_table
+from conftest import _start_a_test
 
 from app import advisor, crud
 from app.database import SessionLocal
@@ -111,7 +111,7 @@ def test_a_delete_is_the_pages_save_without_the_answer(client, monkeypatch, key,
     assert _confirm(client, monkeypatch, card).status_code == 200
     by_chat = _answers(client)
 
-    _empty_every_table()
+    _start_a_test()
     _setup(client)
     _page_saves_without(client, key)
     assert by_chat == _answers(client)
@@ -256,7 +256,7 @@ def test_an_answer_that_hides_a_follow_up_takes_it_away_as_the_save_does(client,
     assert _confirm(client, monkeypatch, card).status_code == 200
     by_chat = _answers(client)
 
-    _empty_every_table()
+    _start_a_test()
     _form_answers(client, home_buy="yes", home_when="> 5 years")
     questions = client.get("/api/survey/questions").json()
     stored = {a["question_key"]: a for a in client.get("/api/survey").json()}

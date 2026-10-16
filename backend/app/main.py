@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.database import StartRefused, init_db
+from app.i18n import LocaleMiddleware
 from app.routers import (
     accumulation_plans,
     cash_anchors,
@@ -87,6 +88,13 @@ app.add_middleware(
     allow_methods=["*"],   # GET, POST, PUT, DELETE, OPTIONS...
     allow_headers=["*"],
 )
+
+# Which language this request is answered in. Added after CORS so it runs
+# first — Starlette wraps, and the last middleware added is the outermost one.
+# It has to be outermost because a validation error is raised while the body
+# is still being parsed, long before a route has a request to read a header
+# from; `app/i18n.py` explains the rest.
+app.add_middleware(LocaleMiddleware)
 
 # Attach the resource routers to the main app.
 app.include_router(institutions.router)

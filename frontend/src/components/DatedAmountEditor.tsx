@@ -2,6 +2,7 @@ import { EditorButtons, Row, RowsOrEmpty, apiError, inputClass, money, CURRENCY_
 import { useListEditor } from "./listEditor";
 import { marks, type Need } from "./required";
 import { askBeforeDeleting } from "./cashDelete";
+import { useT } from "../i18n/useT.ts";
 
 /* "A date and an amount, one row per date" — written three times, identically.
 
@@ -38,8 +39,8 @@ export function DatedAmountEditor<T extends { id: number; note: string | null },
   destroy,
   deleteMoves,
   onChanged,
-  /** Singular, lower case: "balance", "valuation", "cash anchor". It names the
-      thing in the confirm dialog AND in the save error. */
+  /** Singular, lower case, ALREADY TRANSLATED: "balance", "valuation", "cash
+      anchor". It names the thing in the confirm dialog AND in the save error. */
   noun,
   amountLabel,
   needs,
@@ -51,7 +52,7 @@ export function DatedAmountEditor<T extends { id: number; note: string | null },
       a day they are reading off a statement); today when the common case is
       now (the cash you are holding as you type). */
   blankDate = "",
-  addLabel = "Add",
+  addLabel,
   amountWidth = "",
 }: {
   items: T[];
@@ -96,6 +97,7 @@ export function DatedAmountEditor<T extends { id: number; note: string | null },
   addLabel?: string;
   amountWidth?: string;
 }) {
+  const tr = useT();
   const ed = useListEditor<T, P>({
     blank: { date: blankDate, amount: "", currency: "" },
     toDraft: (i) => ({
@@ -109,12 +111,12 @@ export function DatedAmountEditor<T extends { id: number; note: string | null },
     update,
     destroy,
     confirmDelete: (i) => {
-      const asked = `Delete the ${noun} of ${dateOf(i)}?`;
+      const asked = tr("dated.confirmDelete", { noun, date: dateOf(i) });
       return deleteMoves
-        ? askBeforeDeleting(asked, () => deleteMoves(i), (err) => apiError(err, "no answer came."))
+        ? askBeforeDeleting(asked, () => deleteMoves(i), (err) => apiError(err, tr("dated.noAnswer")))
         : asked;
     },
-    saveError: `Save failed (a ${noun} for that date may already exist).`,
+    saveError: tr("dated.saveError", { noun }),
     onChanged,
   });
 
@@ -144,7 +146,7 @@ export function DatedAmountEditor<T extends { id: number; note: string | null },
           // it, so the box had no name: measured, the anchor's date on the
           // account page read as '' in the accessibility tree. Named with the
           // same word a sighted reader sees, or "Date" where there is none.
-          aria-label={dateLabel ?? "Date"}
+          aria-label={dateLabel ?? tr("dated.date")}
           {...marks(needs, "date")}
           value={ed.draft.date}
           onChange={(e) => ed.set("date")(e.target.value)}
@@ -161,9 +163,9 @@ export function DatedAmountEditor<T extends { id: number; note: string | null },
         {proposedCurrency && (
           <input
             className={inputClass + " w-20"}
-            placeholder="currency"
+            placeholder={tr("dated.currencyPlaceholder")}
             list={CURRENCY_LIST}
-            title="The currency this amount is in. Proposed from the anchor in force on this date; change it and it stays as you typed it."
+            title={tr("dated.currencyTitle")}
             value={ed.draft.currency || proposedCurrency(ed.draft.date)}
             onChange={(e) => ed.set("currency")(e.target.value)}
           />
@@ -172,7 +174,7 @@ export function DatedAmountEditor<T extends { id: number; note: string | null },
           editing={ed.editing}
           submitting={ed.submitting}
           onCancel={ed.reset}
-          addLabel={addLabel}
+          addLabel={addLabel ?? tr("common.add")}
         />
       </form>
 

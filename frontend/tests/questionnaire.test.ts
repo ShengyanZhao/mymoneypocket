@@ -10,6 +10,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { setLocale, tIn } from "../src/i18n/t.ts";
 import type { SurveyQuestion } from "../src/api/survey.ts";
 import {
   canShow,
@@ -18,6 +19,11 @@ import {
   topicsOf,
   unshownAnswer,
 } from "../src/components/questionnaire.ts";
+
+// The sentences are read in whatever language is in force, and node's
+// `navigator` is the machine's: pin English so the assertions below compare
+// English to English. (i18n.test.ts says why at length.)
+setLocale("en");
 
 function question(fields: Partial<SurveyQuestion> & Pick<SurveyQuestion, "key" | "type">): SurveyQuestion {
   return {
@@ -58,10 +64,12 @@ test("a goal stored in a yes/no question is said under it, and stays on record",
   const stored = "Yes: a goal of 12,000 for a new kitchen by 2029";
 
   assert.equal(canShow(BIG, stored), false);
+  // Asserted through the catalogue rather than a typed-out sentence: the
+  // words are a message now (`survey.unshown.boolean`), and a test that
+  // restates them would drift the moment a translator touches one.
   assert.equal(
     unshownAnswer(BIG, stored),
-    'On record: "Yes: a goal of 12,000 for a new kitchen by 2029", which is none of these answers. ' +
-      "Press one to replace it; saved without one, it stays as it is.",
+    tIn("en", "survey.unshown.boolean" as never, { value: stored }),
   );
 });
 
@@ -76,16 +84,14 @@ test("an answer the form offers, and no answer at all, say nothing", () => {
 test("a choice the options do not hold is said with what to do", () => {
   assert.equal(
     unshownAnswer(RISK, "Quite high"),
-    'On record: "Quite high", which is none of these options. ' +
-      "Pick one to replace it; saved without one, it stays as it is.",
+    tIn("en", "survey.unshown.single" as never, { value: "Quite high" }),
   );
 });
 
 test("a number box cannot show words, so they are said under it", () => {
   assert.equal(
     unshownAnswer(AGE, "35 anni"),
-    'On record: "35 anni", which is not a number. ' +
-      "Type one to replace it; saved without one, it stays as it is.",
+    tIn("en", "survey.unshown.number" as never, { value: "35 anni" }),
   );
   assert.equal(canShow(AGE, " "), false);
 });

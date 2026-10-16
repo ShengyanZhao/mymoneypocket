@@ -6,8 +6,10 @@
    no button to show. A stored answer the form cannot show is shown here in
    words, and nothing replaces it until the reader does.
 
-   No runtime imports, so `npm test` reaches it. */
+   One runtime import: the catalogue, so the sentence under a question is said
+   in the language in force. No DOM — `npm test` still reaches it. */
 
+import { t } from "../i18n/t.ts";
 import type { SurveyQuestion } from "../api/survey";
 
 /** What the form offers to press or pick, in its order: yes and no ("unsure"
@@ -35,13 +37,15 @@ export function canShow(q: SurveyQuestion, value: string): boolean {
     another: a save without one sends it back as it was. */
 export function unshownAnswer(q: SurveyQuestion, value: string): string | null {
   if (canShow(q, value)) return null;
-  const replace =
+  // One key per kind of box, because the three sentences differ in more than
+  // one word: what the box takes, and what the reader does about it.
+  const key =
     q.type === "boolean"
-      ? "which is none of these answers. Press one"
+      ? "survey.unshown.boolean"
       : q.type === "single"
-        ? "which is none of these options. Pick one"
-        : "which is not a number. Type one";
-  return `On record: "${value}", ${replace} to replace it; saved without one, it stays as it is.`;
+        ? "survey.unshown.single"
+        : "survey.unshown.number";
+  return t(key, { value });
 }
 
 /** Whether `q` is shown, given the answers so far: a question that follows

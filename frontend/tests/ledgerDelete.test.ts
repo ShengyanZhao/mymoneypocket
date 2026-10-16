@@ -10,6 +10,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { deleteQuestion, type LedgerEntry } from "../src/components/ledgerDelete.ts";
+import { catalogues, setLocale } from "../src/i18n/t.ts";
+import { portfolioEn } from "../src/i18n/messages/staging/portfolio.en.ts";
+import { portfolioZh } from "../src/i18n/messages/staging/portfolio.zh.ts";
+
+Object.assign(catalogues.en, portfolioEn);
+Object.assign(catalogues.zh, portfolioZh);
+setLocale("en");
 
 function row(over: Partial<LedgerEntry>): LedgerEntry {
   return {

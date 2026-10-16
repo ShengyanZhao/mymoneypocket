@@ -11,9 +11,10 @@ Every name is invented (a "Demo Bank" and a "Demo Broker"), and every date is
 counted back from the day the file is built, so the demo always ends today. The
 positions are real, widely held listings, so that prices, dividends and the
 look-through have something to find once the app is running; they are entered
-at prices near the market's of October 2026, and the Portfolio compares them
-with what the market says on the day you look. Building it needs no network: every amount is in euros, so no
-exchange rate is asked for, and nothing below calls a price.
+at prices near the market's of October 2026, taken to renminbi at `CNY_PER_EUR`,
+and the Portfolio compares them with what the market says on the day you look.
+Building it needs no network: every amount is in renminbi, so no exchange rate
+is asked for, and nothing below calls a price.
 
 Why a file of its own and not rows mixed into yours: a demo you can delete
 whole is one that can never leave a stray row in your records.
@@ -36,6 +37,19 @@ REAL_NAME = "data.db"
 
 BANK = "Demo Bank"
 BROKER = "Demo Broker"
+
+# The demo is a renminbi household — the base a database that never chose one
+# is given — while the listings below are euro ones and the figures they were
+# invented with are euro figures. One fixed rate turns one into the other, so
+# the file keeps its round numbers and the build still reaches no feed: asking
+# what a euro is worth today would be the network call this module refuses.
+# Deliberately not the market's rate, so the Portfolio has a small gain or
+# loss to show rather than a perfectly flat one.
+CNY_PER_EUR = 7.8
+
+
+def _cny(eur: float) -> float:
+    return round(eur * CNY_PER_EUR, 2)
 
 # Real listings, chosen because they are widely held and Yahoo prices them in
 # euros on Xetra; the ISINs are justETF's, so the look-through finds each fund.
@@ -88,7 +102,7 @@ def _situation(client, institution_id: int, date: datetime.date, rows: list[dict
                                  json={"date": _day(date)}))
     for row in rows:
         _made(client.post(f"/api/snapshots/{snapshot['id']}/holdings",
-                          json={"currency": "EUR", **row}))
+                          json={"currency": "CNY", **row}))
     return snapshot["id"]
 
 
@@ -138,26 +152,26 @@ def populate(client, today: datetime.date) -> dict[str, int]:
     # Two photographs months apart, the newer one naming everything the older
     # did: the net worth over time has a history, and nothing has gone missing.
     _situation(client, broker, earlier, [
-        {**WORLD, "quantity": 45, "unit_price": 122.0},
-        {**EMERGING, "quantity": 120, "unit_price": 44.0},
-        {**BONDS, "value": 2400.0},
+        {**WORLD, "quantity": 45, "unit_price": _cny(122.0)},
+        {**EMERGING, "quantity": 120, "unit_price": _cny(44.0)},
+        {**BONDS, "value": _cny(2400.0)},
     ])
     newest = _situation(client, broker, quarter_ago, [
-        {**WORLD, "quantity": 70, "unit_price": 128.0},
-        {**EMERGING, "quantity": 160, "unit_price": 47.5},
-        {**SHARE, "quantity": 6, "unit_price": 195.0},
-        {**BONDS, "value": 2450.0},
+        {**WORLD, "quantity": 70, "unit_price": _cny(128.0)},
+        {**EMERGING, "quantity": 160, "unit_price": _cny(47.5)},
+        {**SHARE, "quantity": 6, "unit_price": _cny(195.0)},
+        {**BONDS, "value": _cny(2450.0)},
     ])
 
     for institution, before, later in ((bank, 7800.0, 10400.0), (broker, 600.0, 900.0)):
         for date, amount in ((earlier, before), (quarter_ago, later)):
             _made(client.post(f"/api/institutions/{institution}/cash-anchors",
-                              json={"date": _day(date), "amount": amount, "currency": "EUR"}))
+                              json={"date": _day(date), "amount": _cny(amount), "currency": "CNY"}))
 
     started = _months_back(today, 11, 1)
     _made(client.post("/api/income-sources", json={
-        "name": "Salary", "kind": "active", "category": "salary", "amount": 3400.0,
-        "currency": "EUR", "frequency": "monthly", "institution_id": bank,
+        "name": "Salary", "kind": "active", "category": "salary", "amount": _cny(3400.0),
+        "currency": "CNY", "frequency": "monthly", "institution_id": bank,
         "start_date": _day(_months_back(today, 11, 27)),
     }))
     for name, category, nature, amount, frequency in (
@@ -169,25 +183,25 @@ def populate(client, today: datetime.date) -> dict[str, int]:
         ("Home insurance", "insurance", "essential", 540.0, "annual"),
     ):
         _made(client.post("/api/expenses", json={
-            "name": name, "category": category, "nature": nature, "amount": amount,
-            "currency": "EUR", "frequency": frequency, "institution_id": bank,
+            "name": name, "category": category, "nature": nature, "amount": _cny(amount),
+            "currency": "CNY", "frequency": frequency, "institution_id": bank,
             "start_date": _day(started),
         }))
 
     _made(client.post("/api/transfers", json={
-        "date": _day(today - datetime.timedelta(days=60)), "amount": 1000.0,
-        "currency": "EUR", "to_currency": "EUR",
+        "date": _day(today - datetime.timedelta(days=60)), "amount": _cny(1000.0),
+        "currency": "CNY", "to_currency": "CNY",
         "from_institution_id": bank, "to_institution_id": broker,
         "note": "Topping up the broker for the monthly plan",
     }))
     _made(client.post("/api/transactions", json={
         "kind": "buy", "date": _day(today - datetime.timedelta(days=20)),
-        "institution_id": broker, **SHARE, "quantity": 4, "unit_price": 191.0,
-        "fees": 2.0, "currency": "EUR", "price_currency": "EUR",
+        "institution_id": broker, **SHARE, "quantity": 4, "unit_price": _cny(191.0),
+        "fees": _cny(2.0), "currency": "CNY", "price_currency": "CNY",
     }))
     # Starts next month, so it has bought nothing yet and asks no price today.
     _made(client.post("/api/accumulation-plans", json={
-        "name": "Monthly world fund", "amount": 300.0, "currency": "EUR",
+        "name": "Monthly world fund", "amount": _cny(300.0), "currency": "CNY",
         "frequency": "monthly", "execution": "whole_units",
         "start_date": _day(_next_month(today, 5)), "source_institution_id": broker,
         "targets": [{"symbol": WORLD["symbol"], "asset_name": WORLD["asset_name"],
@@ -195,30 +209,31 @@ def populate(client, today: datetime.date) -> dict[str, int]:
     }))
 
     flat = _made(client.post("/api/real-assets", json={
-        "name": "Apartment", "category": "real_estate", "currency": "EUR",
-        "acquisition_date": _day(_months_back(today, 72, 15)), "acquisition_value": 265000.0,
+        "name": "Apartment", "category": "real_estate", "currency": "CNY",
+        "acquisition_date": _day(_months_back(today, 72, 15)),
+        "acquisition_value": _cny(265000.0),
     }))["id"]
     mortgage = _made(client.post("/api/liabilities", json={
         "name": "Mortgage", "kind": "mortgage", "interest_rate": 2.1,
-        "real_asset_id": flat, "currency": "EUR",
+        "real_asset_id": flat, "currency": "CNY",
     }))["id"]
     month_ago = today - datetime.timedelta(days=30)
     for date, value in ((first, 296000.0), (month_ago, 305000.0)):
         _made(client.post(f"/api/real-assets/{flat}/valuations",
-                          json={"date": _day(date), "value": value}))
+                          json={"date": _day(date), "value": _cny(value)}))
     for date, balance in ((first, 207000.0), (month_ago, 199500.0)):
         _made(client.post(f"/api/liabilities/{mortgage}/balances",
-                          json={"date": _day(date), "balance": balance}))
+                          json={"date": _day(date), "balance": _cny(balance)}))
 
     for goal in (
         {"name": "Emergency fund", "type": "emergency_fund",
          "notes": "Six months of expenses, kept at the bank."},
         {"name": "Retire at 60", "type": "long_term_growth"},
-        {"name": "A new car", "type": "target_amount", "target_amount": 18000.0,
+        {"name": "A new car", "type": "target_amount", "target_amount": _cny(18000.0),
          "target_date": _day(datetime.date(today.year + 3, today.month, min(today.day, 28))),
-         "current_amount": 4000.0, "monthly_contribution": 250.0},
+         "current_amount": _cny(4000.0), "monthly_contribution": _cny(250.0)},
     ):
-        _made(client.post("/api/goals", json={"currency": "EUR", **goal}))
+        _made(client.post("/api/goals", json={"currency": "CNY", **goal}))
 
     _made(client.put("/api/survey", json=_survey()))
     return {"bank": bank, "broker": broker, "situation": newest, "apartment": flat,

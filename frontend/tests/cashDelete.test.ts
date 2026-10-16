@@ -9,6 +9,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { askBeforeDeleting } from "../src/components/cashDelete.ts";
+import { setLocale } from "../src/i18n/t.ts";
+
+// The host's navigator is Chinese; these sentences are pinned in English.
+setLocale("en");
 
 const MOVES =
   "It goes, and nothing brings it back. Example Bank's cash changes from 2026-09-11 on: today from 1800.00 EUR to 2800.00 EUR.";

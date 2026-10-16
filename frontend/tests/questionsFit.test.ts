@@ -12,6 +12,14 @@
    round differently: "What is it? e.g. Mortgage" was 152.7px in 156, and
    3px of margin is how a question gets cut again by a rendering nobody tried.
 
+   BOTH LANGUAGES are measured, with their own fonts. Chinese has no Archivo
+   advances — the self-hosted subset is latin-only and the glyph comes from
+   PingFang or YaHei — but a CJK glyph is full width by the standard that font
+   is built to, so one em is the width and the table is not needed. That is
+   not an approximation of the rendering, it is the rule the rendering follows.
+   English still needs the table, because a proportional font's advances are
+   what it is made of.
+
    Run by `npm test` with Node's own test runner; no runtime imports. */
 
 import assert from "node:assert/strict";
@@ -33,14 +41,40 @@ import {
   transaction,
   type Need,
 } from "../src/components/required.ts";
+import { tIn, type Locale } from "../src/i18n/t.ts";
 
 const PX = 14;
 const SLACK = 4;
+
+const LOCALES: Locale[] = ["en", "zh"];
+
+/** A glyph the CJK font draws across a whole em: the ideographs, kana and
+    Hangul, and the full-width brackets and punctuation that sit beside them. */
+function fullWidth(ch: string): boolean {
+  const c = ch.codePointAt(0) ?? 0;
+  return (
+    (c >= 0x1100 && c <= 0x115f) || // Hangul Jamo
+    (c >= 0x2e80 && c <= 0x303e) || // CJK radicals, Kangxi, punctuation
+    (c >= 0x3041 && c <= 0x33ff) || // kana, Hangul compat, CJK compat
+    (c >= 0x3400 && c <= 0x4dbf) || // CJK extension A
+    (c >= 0x4e00 && c <= 0x9fff) || // CJK unified
+    (c >= 0xf900 && c <= 0xfaff) || // CJK compat ideographs
+    (c >= 0xfe30 && c <= 0xfe4f) || // CJK compat forms
+    (c >= 0xff00 && c <= 0xff60) || // full-width forms
+    (c >= 0xffe0 && c <= 0xffe6) ||
+    (c >= 0x20000 && c <= 0x2fa1f) // CJK extensions B and on
+  );
+}
 
 /** The rendered width of `text` at 14px, weight 400, kerning left out. */
 function width(text: string): number {
   let units = 0;
   for (const ch of text) {
+    if (fullWidth(ch)) {
+      // One em, whatever the font: full-width by design, not by measurement.
+      units += UNITS_PER_EM;
+      continue;
+    }
     const advance = ARCHIVO_400[ch];
     assert.ok(advance !== undefined, `no advance for ${JSON.stringify(ch)}: extend archivoAdvances.ts`);
     units += advance;
@@ -104,26 +138,43 @@ const ROOM: Record<string, number> = {
   "transaction(close).fees": 102,
 };
 
-const asked = RULES.flatMap(([rule, needs]) =>
-  needs.filter((n) => n.ask).map((n) => ({ at: `${rule}.${n.key}`, ask: n.ask as string })),
-);
+/** Where each rule's question is asked, and in what words, per language. */
+function askedIn(locale: Locale): { at: string; ask: string }[] {
+  return RULES.flatMap(([rule, needs]) =>
+    needs
+      .filter((n) => n.askKey)
+      .map((n) => ({ at: `${rule}.${n.key}`, ask: tIn(locale, n.askKey as never) })),
+  );
+}
 
 test("the table is weight 400, not the variable font's default 600", () => {
   // 76.0 at the default instance; 74.0 is what an input renders
   assert.equal(width("How many?").toFixed(1), "74.0");
 });
 
+test("a full-width glyph is one em wide", () => {
+  // The Chinese table has no advances to look up; this is the rule it uses.
+  assert.equal(width("价"), PX);
+  assert.equal(width("价格？"), PX * 3);
+});
+
 test("every question has a measured box", () => {
-  const unmeasured = asked.filter((q) => ROOM[q.at] === undefined).map((q) => q.at);
-  assert.deepEqual(unmeasured, [], "measure these boxes on the page and add them to ROOM");
+  for (const locale of LOCALES) {
+    const unmeasured = askedIn(locale)
+      .filter((q) => ROOM[q.at] === undefined)
+      .map((q) => `${locale}: ${q.at}`);
+    assert.deepEqual(unmeasured, [], "measure these boxes on the page and add them to ROOM");
+  }
 });
 
 test(`every question fits its box with ${SLACK}px to spare`, () => {
-  const tight = asked
-    .map((q) => ({ ...q, width: width(q.ask), room: ROOM[q.at] }))
-    .filter((q) => q.width + SLACK > q.room)
-    .map((q) => `${q.at} "${q.ask}" is ${q.width.toFixed(1)}px in ${q.room}`);
-  assert.deepEqual(tight, []);
+  for (const locale of LOCALES) {
+    const tight = askedIn(locale)
+      .map((q) => ({ ...q, width: width(q.ask), room: ROOM[q.at] }))
+      .filter((q) => q.width + SLACK > q.room)
+      .map((q) => `${locale}: ${q.at} "${q.ask}" is ${q.width.toFixed(1)}px in ${q.room}`);
+    assert.deepEqual(tight, []);
+  }
 });
 
 test("the check refuses what 09 shipped, and a question with 3px to spare", () => {
@@ -133,4 +184,12 @@ test("the check refuses what 09 shipped, and a question with 3px to spare", () =
   assert.equal(fits("How much each time?", 86), false);
   assert.equal(fits("What is it? e.g. Mortgage", 156), false);
   assert.equal(fits("What is it? e.g. Car loan", 156), true);
+});
+
+test("the same box check catches a Chinese question that is too long", () => {
+  const fits = (text: string, room: number) => width(text) + SLACK <= room;
+  // 12 full-width glyphs is 168px — far past the 156 of a name box. This is
+  // what "是什么？例如 米兰的房子" would have cost.
+  assert.equal(fits("是什么？例如米兰的房子", 156), false);
+  assert.equal(fits("是什么？例如米兰公寓", 156), true);
 });

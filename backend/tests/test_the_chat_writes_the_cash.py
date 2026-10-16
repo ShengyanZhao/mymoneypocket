@@ -24,7 +24,7 @@ import datetime
 import json
 
 import pytest
-from conftest import _empty_every_table
+from conftest import _start_a_test
 
 from app import advisor, chat, fx
 
@@ -106,7 +106,7 @@ def _by_chat_and_by_form(client, monkeypatch, tool: str, arguments: dict, form) 
     assert _confirm(client, monkeypatch, card).status_code == 200
     by_chat = _rows(client)
 
-    _empty_every_table()
+    _start_a_test()
     form(client, _setup(client))
     by_form = _rows(client)
 
@@ -174,7 +174,7 @@ def test_a_transfer_across_two_currencies_is_the_forms_at_the_rate_of_its_day(
     )
     assert _confirm(client, monkeypatch, card).status_code == 200
     by_chat = _rows(client)
-    _empty_every_table()
+    _start_a_test()
     form(client, _setup(client))
     assert by_chat == _rows(client)
     assert by_chat["transfers"][0]["fx_as_of"] == DAY
@@ -328,7 +328,7 @@ def test_a_balance_on_a_day_that_has_one_replaces_it_as_the_forms_edit(client, m
     )
     assert _confirm(client, monkeypatch, card).status_code == 200
     by_chat = _rows(client)
-    _empty_every_table()
+    _start_a_test()
     form(client, _setup(client))
     assert by_chat == _rows(client)
 

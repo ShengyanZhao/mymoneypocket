@@ -3,6 +3,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } f
 import type { Components } from "react-markdown";
 import { EDGE, nextOpen, placePanel } from "./explain";
 import { localDay } from "./calendarDays";
+import { t, useT } from "../i18n/index.ts";
 
 // Shared UI building blocks + style constants, reused across feature tabs.
 
@@ -81,7 +82,7 @@ export function apiError(e: unknown, fallback: string): string {
   // server" are different claims, and reporting the second as the first sends
   // someone off to correct a request that was fine — the same distinction the
   // backend keeps between MarketUnreachable and PriceError.
-  if (!e.response) return "The backend did not answer. Is it running on :8000?";
+  if (!e.response) return t("common.backendDown");
 
   const detail = (e.response.data as { detail?: unknown } | undefined)?.detail;
   if (typeof detail === "string" && detail.trim()) return detail.trim();
@@ -425,7 +426,8 @@ export function RowsOrEmpty({
   emptyText: string;
   children: ReactNode;
 }) {
-  if (loading) return <p className="text-ink-soft">Loading…</p>;
+  const tr = useT();
+  if (loading) return <p className="text-ink-soft">{tr("common.loading")}</p>;
   if (error) return <p className="text-down">{error}</p>;
   if (empty) return <p className="text-ink-soft">{emptyText}</p>;
   return (
@@ -474,6 +476,7 @@ export function Row({
   badge?: string | null;
   value?: string;
 }) {
+  const tr = useT();
   const content = (
     <>
       <div className="min-w-0">
@@ -508,8 +511,8 @@ export function Row({
           <button
             onClick={onRefresh}
             disabled={refreshing}
-            aria-label="Refresh price"
-            title="Refresh price from the market"
+            aria-label={tr("common.refreshPrice")}
+            title={tr("common.refreshPriceTitle")}
             className="shrink-0 px-2 py-3 text-ink-faint transition hover:text-up disabled:opacity-50"
           >
             {refreshing ? "…" : "↻"}
@@ -518,8 +521,8 @@ export function Row({
         {onEdit && (
           <button
             onClick={onEdit}
-            aria-label="Edit"
-            title="Edit"
+            aria-label={tr("common.edit")}
+            title={tr("common.edit")}
             className="shrink-0 px-2 py-3 text-ink-faint transition hover:text-olive"
           >
             ✎
@@ -528,8 +531,8 @@ export function Row({
         {onDelete && (
           <button
             onClick={onDelete}
-            aria-label="Delete"
-            title="Delete"
+            aria-label={tr("common.delete")}
+            title={tr("common.delete")}
             className="shrink-0 px-3 py-3 text-ink-faint transition hover:text-down"
           >
             ✕
@@ -549,11 +552,14 @@ export const statLabelClass = "text-[0.65rem] font-medium uppercase tracking-[0.
 
 /** One number, one name, one definition: the Cash flow page and the
     Dashboard's meter show the same `savings_rate`, and used to call it two
-    different things. */
-export const SAVINGS_RATE: Explain = {
-  question: "What is the savings rate?",
-  text: "Share of monthly income left after expenses.",
-};
+    different things.
+
+    A function rather than a constant: the definition is words, and a constant
+    would be the words of whatever language was in force when this file first
+    loaded. Called at render, it says them in the language being read now. */
+export function savingsRate(): Explain {
+  return { question: t("ui.savingsRate.question"), text: t("ui.savingsRate.text") };
+}
 
 export function StatCard({
   label,
@@ -597,24 +603,30 @@ export function StatCard({
 }
 
 export function CancelButton({ onClick }: { onClick: () => void }) {
+  const tr = useT();
   return (
     <button
       type="button"
       onClick={onClick}
       className="rounded-sm px-3 py-2 text-sm text-ink-soft hover:text-ink"
     >
-      Cancel
+      {tr("common.cancel")}
     </button>
   );
 }
 
-/** The submit button, plus the Cancel that only exists while editing. */
+/** The submit button, plus the Cancel that only exists while editing.
+
+    `addLabel`/`saveLabel` default to the shared words and may name the thing
+    being added instead ("Add institution"). The default is evaluated per
+    call, so a form that names nothing says "Add" in the language being read
+    rather than the one that happened to be in force at import. */
 export function EditorButtons({
   editing,
   submitting,
   onCancel,
-  addLabel = "Add",
-  saveLabel = "Save",
+  addLabel,
+  saveLabel,
 }: {
   editing: boolean;
   submitting: boolean;
@@ -622,10 +634,15 @@ export function EditorButtons({
   addLabel?: string;
   saveLabel?: string;
 }) {
+  const tr = useT();
   return (
     <>
       <button className={btnClass} disabled={submitting}>
-        {submitting ? "..." : editing ? saveLabel : addLabel}
+        {submitting
+          ? "..."
+          : editing
+            ? (saveLabel ?? tr("common.save"))
+            : (addLabel ?? tr("common.add"))}
       </button>
       {editing && <CancelButton onClick={onCancel} />}
     </>

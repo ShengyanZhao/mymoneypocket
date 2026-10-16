@@ -20,8 +20,13 @@
    there again (measured the same day). So a correction keeps the row's own
    date, and moving the date of a row the app recorded is said, not refused.
 
+   The sentences come from the catalogue when they are said. The AUTO_STAMP
+   does not: it is stored on the row and pinned by the backend's tests.
+
    Pure, so `tests/sameDividend.test.ts` runs it under Node without a
    bundler. Dates go in as ISO strings; `fmt` is how the page prints them. */
+
+import { t } from "../i18n/t.ts";
 
 /** The ledger fields these rules read, as `TransactionRead` carries them. */
 export type LedgerRow = {
@@ -41,7 +46,11 @@ export const SHOWN = 3;
 
 /** The start of the note the catch-up writes on every dividend it records
     (`pac.execute_dividends`). An edit keeps it, and the backend's tests pin
-    it (`test_a_stamp_says_where_a_row_came_from.py`). */
+    it (`test_a_stamp_says_where_a_row_came_from.py`).
+
+    Stays English on purpose: it is STORED on the row and detected here via
+    `startsWith`, so changing it would orphan rows already stamped and break
+    the detection. The UI shows the stored note as the backend wrote it. */
 export const AUTO_STAMP = "Auto-recorded from market data";
 
 const asIs = (iso: string) => iso;
@@ -56,34 +65,39 @@ export function estimatedDividends<T extends LedgerRow>(
   if (typed.institutionId == null || !symbol || !typed.date) return [];
   return rows
     .filter(
-      (t) =>
-        t.kind === "dividend" &&
-        t.estimated &&
-        t.institution_id === typed.institutionId &&
-        (t.symbol ?? "").toUpperCase() === symbol &&
-        t.date <= typed.date,
+      (r) =>
+        r.kind === "dividend" &&
+        r.estimated &&
+        r.institution_id === typed.institutionId &&
+        (r.symbol ?? "").toUpperCase() === symbol &&
+        r.date <= typed.date,
     )
     .sort((a, b) => (a.date === b.date ? b.id - a.id : a.date < b.date ? 1 : -1));
 }
 
 /** The sentence over the offered rows. */
 export function offerLine(symbol: string, where: string): string {
-  return `Already recorded for ${symbol.trim().toUpperCase()} at ${where}, still estimated (the market's gross figure, before tax). If the dividend you are entering is one of these, correct it instead: a second row would count it twice.`;
+  return t("dividend.offerLine", {
+    symbol: symbol.trim().toUpperCase(),
+    where,
+  });
 }
 
 /** What is said of the estimated rows beyond the ones named, or null. */
 export function olderLine(count: number): string | null {
   const older = count - SHOWN;
   if (older <= 0) return null;
-  return older === 1 ? "And 1 older one." : `And ${older} older ones.`;
+  return t("dividend.older", { count: older });
 }
 
 /** Said once the form has become the correction of a row. */
 export function correctingLine(rowDate: string, typedDate: string, fmt = asIs): string {
-  const said = `Correcting the dividend of ${fmt(rowDate)} with your figures: save to replace its own.`;
   return typedDate && typedDate !== rowDate
-    ? `${said} Its date stays ${fmt(rowDate)}, the ex-date the app finds it by, so ${fmt(typedDate)} is not used.`
-    : said;
+    ? t("dividend.correctingMoved", {
+        rowDate: fmt(rowDate),
+        typedDate: fmt(typedDate),
+      })
+    : t("dividend.correcting", { rowDate: fmt(rowDate) });
 }
 
 /** Whether the app's catch-up recorded this row, by the stamp it wrote. */
@@ -99,5 +113,8 @@ export function movedOffItsDay(
   fmt = asIs,
 ): string | null {
   if (!recordedByTheApp(row) || !date || date === row.date) return null;
-  return `The app recorded this dividend on its ex-date, ${fmt(row.date)}, and finds it by that day. Moved to ${fmt(date)}, the dividend of ${fmt(row.date)} is recorded again at the next start, unless this account has a situation dated on or after it.`;
+  return t("dividend.movedOffDay", {
+    rowDate: fmt(row.date),
+    date: fmt(date),
+  });
 }

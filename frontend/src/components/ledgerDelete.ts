@@ -11,8 +11,14 @@
    and the app does not record a dividend on that day again. The question the
    form asked said none of it.
 
+   Each branch is ONE catalogue sentence rather than clauses glued here: the
+   punctuation between clauses belongs to the language, and a Chinese question
+   ends with a full stop its English twin ends with a question mark.
+
    Pure, so `tests/ledgerDelete.test.ts` runs it under Node without a bundler.
    Dates go in as ISO strings; `fmt` is how the page prints them. */
+
+import { t, tOpt } from "../i18n/t.ts";
 
 /** The ledger fields this reads, as `TransactionRead` carries them. */
 export type LedgerEntry = {
@@ -28,6 +34,12 @@ export type LedgerEntry = {
 
 const asIs = (iso: string) => iso;
 
+/** The reader's word for a stored kind; a kind nobody has named yet is shown
+    as stored rather than dropped. */
+function kindWord(kind: string): string {
+  return tOpt(`ledger.kind.${kind}`) ?? kind;
+}
+
 /** The question the ledger's Delete asks about `entry`, with what follows
     from it. `rows` is the ledger, where the other buys of its occurrence are. */
 export function deleteQuestion(
@@ -35,22 +47,25 @@ export function deleteQuestion(
   rows: LedgerEntry[],
   fmt: (iso: string) => string = asIs,
 ): string {
-  const asked = `Delete ${entry.kind} "${entry.asset_name}" of ${fmt(entry.date)}?`;
+  const said = {
+    kind: kindWord(entry.kind),
+    name: entry.asset_name,
+    date: fmt(entry.date),
+  };
   if (entry.kind === "buy" && entry.plan_id != null && entry.plan_occurrence) {
     const occurrence = fmt(entry.plan_occurrence);
     const others = rows.some(
-      (t) =>
-        t.id !== entry.id &&
-        t.plan_id === entry.plan_id &&
-        t.plan_occurrence === entry.plan_occurrence,
+      (r) =>
+        r.id !== entry.id &&
+        r.plan_id === entry.plan_id &&
+        r.plan_occurrence === entry.plan_occurrence,
     );
-    const settled = others
-      ? `Its PAC's occurrence of ${occurrence} keeps its other buy, and this fund is not bought for it again.`
-      : `Its PAC will not buy its occurrence of ${occurrence} again.`;
-    return `${asked} ${settled} What the PAC carries goes to zero, and that money stays in the account's cash. If your broker did buy it, correct it with the figures from your statement instead.`;
+    return others
+      ? t("ledger.deletePacKeeps", { ...said, occurrence })
+      : t("ledger.deletePacLast", { ...said, occurrence });
   }
   if (entry.kind === "dividend" && entry.symbol && entry.institution_id != null) {
-    return `${asked} The app will not record a dividend of ${entry.symbol} at this account on ${fmt(entry.date)} again. If your broker paid it, correct it with the credit from your statement instead.`;
+    return t("ledger.deleteDividend", { ...said, symbol: entry.symbol });
   }
-  return `${asked} Nothing brings it back.`;
+  return t("ledger.deletePlain", said);
 }

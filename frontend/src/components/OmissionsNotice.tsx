@@ -1,5 +1,7 @@
 import type { ArrivedPosition, OmittedPosition } from "../api/dashboard";
 import { locale, money } from "./ui";
+import { useT, type T } from "../i18n/useT.ts";
+import type { RichPart } from "../i18n/t.ts";
 
 /* Value a situation did not account for, and what it declared instead.
 
@@ -42,9 +44,9 @@ function fmtUnits(n: number): string {
    in the table, and calling that one "gone" reads as a bug in the notice
    rather than as a question about the situation. They are different sentences
    because they are different facts. */
-function label(o: OmittedPosition): string {
+function label(o: OmittedPosition, tr: T): string {
   const name = shortName(o.asset_name);
-  return o.units_missing ? `${fmtUnits(o.units_missing)} units of ${name}` : name;
+  return o.units_missing ? tr("omitted.unitsOf", { units: fmtUnits(o.units_missing), name }) : name;
 }
 
 /* When the positions were last on record.
@@ -54,13 +56,21 @@ function label(o: OmittedPosition): string {
    (analytics._unaccounted), and they come from different institutions with
    different photograph dates. So the date shown was the largest omission's,
    attached to every name in the line. */
-function lastSeenPhrase(items: OmittedPosition[]): string {
+function lastSeenPhrase(items: OmittedPosition[], tr: T): string {
   const dates = items.map((o) => o.last_seen).sort();
   const first = dates[0];
   const last = dates[dates.length - 1];
   return first === last
-    ? `last seen ${fmtDate(first)}`
-    : `last seen between ${fmtDate(first)} and ${fmtDate(last)}`;
+    ? tr("omitted.lastSeen", { date: fmtDate(first) })
+    : tr("omitted.lastSeenBetween", { first: fmtDate(first), last: fmtDate(last) });
+}
+
+/** `tRich`'s parts as markup: `**strong**` becomes `<b>`, matching the marks
+    the English puts on the figures and the word "close". */
+function Rich({ parts }: { parts: RichPart[] }) {
+  return parts.map((p, i) =>
+    p.kind === "strong" ? <b key={i}>{p.value}</b> : <span key={i}>{p.value}</span>,
+  );
 }
 
 export function OmissionsNotice({
@@ -71,9 +81,10 @@ export function OmissionsNotice({
       the only one who can tell which. Naming only the first half reads as a
       loss every time. */
   arrivals = [],
-  /** Where to go to record the disposal. The Portfolio page is already there
-      and would be telling the reader to walk to the room they are standing in;
-      the Dashboard is one page away and has to say which one. */
+  /** Where to go to record the disposal, ALREADY TRANSLATED and shaped to the
+      sentence it sits in (see `omitted.inPortfolio`). The Portfolio page is
+      already there and would be telling the reader to walk to the room they
+      are standing in; the Dashboard is one page away and has to say which one. */
   where,
   /** The currency the values are in: the base of the payload they came from. */
   baseCurrency,
@@ -83,6 +94,7 @@ export function OmissionsNotice({
   where?: string;
   baseCurrency: string;
 }) {
+  const tr = useT();
   if (items.length === 0) return null;
   const total = items.reduce((sum, o) => sum + o.last_value, 0);
   const arrived = arrivals.reduce((sum, a) => sum + a.value, 0);
@@ -92,18 +104,18 @@ export function OmissionsNotice({
       // The explanation lives here, out of the way. A warning sitting above a
       // page of figures has to be read at a glance, and a paragraph is not read
       // at a glance — it is skipped, which makes it worse than nothing.
-      title="A newer situation stopped accounting for these, so their value left the totals and nothing on record says where it went. Selling is a dated statement with proceeds; forgetting is the absence of one."
+      title={tr("omitted.title")}
     >
-      <b>{money(baseCurrency).format(total)}</b> left the totals with nothing saying where it went ·{" "}
+      <Rich parts={tr.rich("omitted.lead", { total: money(baseCurrency).format(total) })} />{" "}
       {items.map((o, i) => (
         <span key={`${o.institution ?? ""}-${o.symbol ?? o.asset_name}`}>
           {i > 0 && " · "}
-          <span title={`${o.asset_name}, last seen ${fmtDate(o.last_seen)}`}>
-            {label(o)}
+          <span title={tr("omitted.nameSeen", { name: o.asset_name, date: fmtDate(o.last_seen) })}>
+            {label(o, tr)}
           </span>
         </span>
       ))}{" "}
-      <span className="text-ink-faint">({lastSeenPhrase(items)})</span>
+      <span className="text-ink-faint">({lastSeenPhrase(items, tr)})</span>
       {arrivals.length > 0 && (
         /* The second number, and the reason it is here: the same situation
            declared things the app had never heard of. If they are the same
@@ -112,24 +124,21 @@ export function OmissionsNotice({
            able from a disappearance, and it is the one that actually happened
            the first time this notice ran on real data. */
         <div className="mt-0.5">
-          <b>{money(baseCurrency).format(arrived)}</b> was declared in the same{" "}
-          {arrivals.length === 1 ? "situation" : "situations"} under{" "}
-          {arrivals.length === 1 ? "a name" : "names"} the app did not know
+          <b>{money(baseCurrency).format(arrived)}</b> {tr("omitted.arrived", { count: arrivals.length })}
           {": "}
           {arrivals.map((a, i) => (
             <span key={`${a.institution ?? ""}-${a.symbol ?? a.asset_name}`}>
               {i > 0 && " · "}
-              <span title={`${a.asset_name}, declared ${fmtDate(a.appeared_on)}`}>
+              <span title={tr("omitted.declaredOn", { name: a.asset_name, date: fmtDate(a.appeared_on) })}>
                 {shortName(a.asset_name, 24)}
               </span>
             </span>
           ))}
-          . <span className="text-ink-soft">Same holdings, written out?</span>
+          . <span className="text-ink-soft">{tr("omitted.sameHoldings")}</span>
         </div>
       )}
       <div className="mt-0.5 text-ink-soft">
-        Sold → record a <b>close</b>
-        {where ? ` ${where}` : ""}. Dropped by mistake → put it back.
+        <Rich parts={tr.rich("omitted.footer", { where: where ?? "" })} />
       </div>
     </div>
   );

@@ -15,6 +15,8 @@
    No React and no DOM, on purpose: this is plain arithmetic about strings, and
    it can be run by `node` alone. */
 
+import { getFormatLocale, subscribe } from "../i18n/t.ts";
+
 /* The reader's own conventions, resolved once and imported everywhere.
 
    This used to be the string "it-IT", written out at thirteen call sites, so
@@ -23,14 +25,20 @@
    expecting 1,234.56 — the same digits meaning something else.
 
    Resolved ONCE on purpose. A locale decided in six files is one file away from
-   six locales, which is the shape of the duplication this codebase keeps
-   finding in itself.
+   six locales, which is the shape of this codebase keeps finding in itself.
+
+   It is a LIVE binding, not a constant, because the reader can now change
+   language from the app: `export let` and the reassignment below are one
+   resolution point with two moments — where it is decided, and when it changes.
+   Anything formatted at module load has to be rebuilt; `money()`'s cache is
+   dropped in the same breath so no figure is printed through a formatter built
+   for a language the reader has left.
 
    `undefined` is a real answer, not a missing one: every Intl and toLocale*
    API reads it as "use the runtime's own locale", which is exactly right when
    navigator is absent — a test, a build step. */
-export const locale: string | undefined =
-  typeof navigator !== "undefined" && navigator.language ? navigator.language : undefined;
+
+export let locale: string | undefined = getFormatLocale();
 
 /** What every formatter here is: the one method the call sites use. */
 export type Money = { format(amount: number): string };
@@ -50,6 +58,14 @@ const MINOR_EXACT = new Set(["GBp"]);
 const MINOR_ANY_CASE = new Set(["GBX", "ZAC", "ILA"]);
 
 const built = new Map<string, Money>();
+
+// Where it changes: the language the reader switched to, and nothing built for
+// the old one. Leaving the cache alone would print a new label through a
+// formatter still holding the last language's punctuation.
+subscribe(() => {
+  locale = getFormatLocale();
+  built.clear();
+});
 
 /** A formatter for amounts in `currency`, built on first use and kept: an
     `Intl.NumberFormat` is not free to construct and a list asks for the same

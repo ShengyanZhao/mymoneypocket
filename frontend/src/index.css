@@ -61,8 +61,18 @@
    from the chart components (SVG stroke/fill). Without `static` those
    variables silently vanish from the build and the marks lose their colour. */
 @theme static {
-  --font-sans: "Archivo", system-ui, "Segoe UI", sans-serif;
-  --font-display: "Instrument Serif", Georgia, "Times New Roman", serif;
+  /* Latin first, CJK after: Archivo and Instrument Serif are self-hosted in
+     latin + latin-ext subsets only, so a Chinese word has nothing to draw it
+     and falls through. The fallbacks are the fonts each system already has —
+     PingFang on macOS, YaHei on Windows, Noto where Linux installed it — so
+     this costs no download and the app still runs with no network. The serif
+     stack is there because `font-display` headings would otherwise be serif in
+     English and sans in Chinese, and a heading is the one place where two
+     typefaces side by side reads as a mistake rather than as variety. */
+  --font-sans: "Archivo", system-ui, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", sans-serif;
+  --font-display: "Instrument Serif", Georgia, "Times New Roman", "Songti SC", "SimSun",
+    "Noto Serif SC", "Noto Serif CJK SC", serif;
 
   /* grounds */
   --color-ground: #faf8f3; /* page */

@@ -9,6 +9,7 @@ import {
 } from "../api/instruments";
 import { catalogueNotice, type CatalogueState } from "./catalogueNotice";
 import { inputClass, locale, policyWord } from "./ui";
+import { useT } from "../i18n/useT.ts";
 
 /* The instrument name field, with the catalogue behind it.
 
@@ -64,7 +65,10 @@ export type InstrumentChoice =
 function detail(m: InstrumentMember): string {
   return [
     m.ter != null ? `TER ${m.ter}%` : null,
-    m.size_meur ? `${m.size_meur.toLocaleString(locale)} M€` : null,
+    // Spelt as the chat spells it (`tools.py`: "4,500 M EUR"), not with the
+    // euro sign: this is the fund's own size, published in euro, and no rate
+    // has been asked for to say what it is in the reader's currency.
+    m.size_meur ? `${m.size_meur.toLocaleString(locale)} M EUR` : null,
     m.domicile,
     m.base_ticker,
   ]
@@ -97,8 +101,8 @@ export function InstrumentPicker({
   onChange,
   onPick,
   owned,
-  placeholder = "Name (type to search)",
-  label = "Asset name",
+  placeholder,
+  label,
   mark,
 }: {
   value: string;
@@ -121,6 +125,9 @@ export function InstrumentPicker({
       question its empty box asks in place of the placeholder. */
   mark?: { "aria-required"?: true; placeholder?: string };
 }) {
+  const tr = useT();
+  const boxPlaceholder = placeholder ?? tr("instrument.placeholder");
+  const boxLabel = label ?? tr("instrument.label");
   const [result, setResult] = useState<InstrumentSearch | null>(null);
   const [live, setLive] = useState<SymbolLookup | null>(null);
   const [liveBusy, setLiveBusy] = useState(false);
@@ -211,8 +218,8 @@ export function InstrumentPicker({
     <div ref={box} className="relative">
       <input
         className={inputClass + " w-72"}
-        placeholder={placeholder}
-        aria-label={label}
+        placeholder={boxPlaceholder}
+        aria-label={boxLabel}
         {...mark}
         value={value}
         onChange={(e) => {
@@ -234,9 +241,9 @@ export function InstrumentPicker({
           {mine.length > 0 && (
             <div className="flex items-baseline justify-between border-b border-rule bg-tint px-3 py-1.5">
               <span className="text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-olive">
-                Positions you already hold
+                {tr("instrument.owned")}
               </span>
-              <span className="text-[0.6rem] text-ink-faint">adds to them, not beside them</span>
+              <span className="text-[0.6rem] text-ink-faint">{tr("instrument.ownedHint")}</span>
             </div>
           )}
           {mine.map((o) => (
@@ -259,7 +266,7 @@ export function InstrumentPicker({
                 <span className="block truncate text-sm text-ink">{o.name}</span>
                 {o.institution && (
                   <span className="block truncate text-[0.65rem] text-ink-soft">
-                    held at {o.institution}
+                    {tr("instrument.heldAt", { institution: o.institution })}
                   </span>
                 )}
               </span>
@@ -268,10 +275,10 @@ export function InstrumentPicker({
           {(liveBusy || (live?.results.length ?? 0) > 0 || live?.reachable === false) && (
             <div className="flex items-baseline justify-between border-b border-rule bg-tint px-3 py-1.5">
               <span className="text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-olive">
-                Shares, ETFs &amp; crypto (live)
+                {tr("instrument.live")}
               </span>
               <span className="text-[0.6rem] text-ink-faint">
-                {liveBusy ? "looking up…" : "the only source of a quotable symbol"}
+                {liveBusy ? tr("instrument.liveLooking") : tr("instrument.liveOnly")}
               </span>
             </div>
           )}
@@ -281,9 +288,9 @@ export function InstrumentPicker({
             // someone to correct a symbol that was right all along.
             <div
               className="border-b border-hair px-3 py-1.5 text-[0.65rem] text-warn"
-              title="Nothing answered, which is a different claim from 'this instrument does not exist'. The catalogue lane below is local and unaffected."
+              title={tr("instrument.liveDownTitle")}
             >
-              Live source did not answer. This says nothing about the instrument.
+              {tr("instrument.liveDown")}
             </div>
           )}
           {(live?.results ?? []).map((r) => {
@@ -319,14 +326,15 @@ export function InstrumentPicker({
                         exchange beside it is what stops the false comparison;
                         the currency itself arrives from the live check once
                         this row is chosen. */}
-                    {r.price != null && ` · ${r.price} on ${exchangeName(r.exchange)}`}
+                    {r.price != null &&
+                      ` · ${r.price} ${tr("instrument.onExchange", { exchange: exchangeName(r.exchange) })}`}
                   </span>
                   {expiring && (
                     <span
                       className="block text-[0.6rem] text-warn"
-                      title="A futures contract expires and rolls, so a position pinned to this symbol would measure a different contract in a few months without saying so."
+                      title={tr("instrument.futuresWarnTitle")}
                     >
-                      ⚠ dated contract: expires and rolls
+                      {tr("instrument.futuresWarn")}
                     </span>
                   )}
                 </span>
@@ -342,16 +350,16 @@ export function InstrumentPicker({
             // that was asked for. It is not hidden, it is placed.
             <div className="flex items-baseline justify-between border-b border-rule bg-tint px-3 py-1.5">
               <span className="text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-olive">
-                Funds &amp; ETFs (UCITS catalogue)
+                {tr("instrument.funds")}
               </span>
               <span className="text-[0.6rem] text-ink-faint">
-                shares and coins are not in here
+                {tr("instrument.fundsHint")}
               </span>
             </div>
           )}
           {result?.coverage === "partial" && families.length > 0 && (
             <div className="border-b border-hair px-3 py-1.5 text-[0.65rem] text-warn">
-              Not every word matched. These are the closest, keep typing to narrow.
+              {tr("instrument.partial")}
             </div>
           )}
           {families.map((f) => (
@@ -379,7 +387,7 @@ export function InstrumentPicker({
                     <span className="block truncate text-sm text-ink">{m.name}</span>
                     <span className="block truncate text-[0.65rem] text-ink-soft">
                       <span className={m.distribution_policy === "dist" ? "text-up" : undefined}>
-                        {policyWord(m.distribution_policy) ?? "unknown"}
+                        {policyWord(m.distribution_policy) ?? tr("instrument.policyUnknown")}
                       </span>
                       {" · "}
                       {m.isin} · {detail(m)}
@@ -391,10 +399,7 @@ export function InstrumentPicker({
           ))}
           {rows !== 0 && families.length === 0 && (
             <div className="px-3 py-2 text-xs text-ink-soft">
-              Nothing in the UCITS fund catalogue matches. For a share, a coin or a
-              US-domiciled ETF that is the expected answer rather than a failure:
-              type the name and the ticker yourself, and the live check below will
-              confirm what it resolved to.
+              {tr("instrument.noMatch")}
             </div>
           )}
           {/* Always last, always present: the catalogue covers UCITS funds and
@@ -404,8 +409,15 @@ export function InstrumentPicker({
             onClick={() => setOpen(false)}
             className="w-full border-t border-rule px-3 py-2 text-left text-xs text-ink-soft hover:bg-tint"
           >
-            Use “<b className="text-ink">{value.trim()}</b>” as it is, with nothing from the
-            catalogue attached
+            {tr.rich("instrument.useAsIs", { value: value.trim() }).map((p, i) =>
+              p.kind === "strong" ? (
+                <b key={i} className="text-ink">
+                  {p.value}
+                </b>
+              ) : (
+                <span key={i}>{p.value}</span>
+              ),
+            )}
           </button>
         </div>
       )}

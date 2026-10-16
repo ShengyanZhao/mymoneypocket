@@ -110,7 +110,7 @@ QUESTIONS: tuple[schemas.SurveyQuestion, ...] = (
         explain_when=(
             "no",
             "Inflation is the general rise in prices over time: with the same amount you "
-            "buy less tomorrow than today. At 3%/year, €100 is worth about €97 of "
+            "buy less tomorrow than today. At 3%/year, ¥100 is worth about ¥97 of "
             "purchasing power after one year, which is why idle cash 'loses value'.",
         ),
     ),
@@ -220,9 +220,9 @@ QUESTIONS: tuple[schemas.SurveyQuestion, ...] = (
         "risk_loss_choice",
         "Risk & values",
         "single",
-        "Which would you choose: a certain loss of 500 €, or a 50% chance of losing "
-        "1000 € and a 50% chance of losing nothing?",
-        options=("A certain loss of 500 €", "A 50/50 gamble: lose 1000 € or lose nothing"),
+        "Which would you choose: a certain loss of 500 ¥, or a 50% chance of losing "
+        "1000 ¥ and a 50% chance of losing nothing?",
+        options=("A certain loss of 500 ¥", "A 50/50 gamble: lose 1000 ¥ or lose nothing"),
     ),
     _asked(
         "values_esg",

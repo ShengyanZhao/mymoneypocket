@@ -27,7 +27,7 @@ import datetime
 import json
 
 import pytest
-from conftest import _empty_every_table
+from conftest import _start_a_test
 from sqlalchemy import select
 
 from app import advisor, crud, dated, models, prices, schemas
@@ -238,7 +238,7 @@ def _by_chat_and_by_form(client, monkeypatch, setup, arguments: dict, form) -> d
     assert _confirm(client, monkeypatch, card).status_code == 200
     by_chat = _records(client)
 
-    _empty_every_table()
+    _start_a_test()
     setup(client)
     form(client)
     assert _records(client) == by_chat
@@ -552,7 +552,7 @@ def test_a_correction_that_changes_nothing_is_refused_and_an_estimate_confirmed_
         "The entry already says that: 2026-09-10 buy 10 x XWLD.MI = 471.50 EUR. Nothing would change."
     ) in _refused(client, monkeypatch, action="correct", date="2026-09-10", kind="buy",
                   instrument="XWLD.MI", new_fees=1.5)
-    _empty_every_table()
+    _start_a_test()
     _pac(client)
     card = _draw(client, monkeypatch, action="correct", date="2026-09-15", kind="buy",
                  instrument="XWLD.MI", new_unit_price=48)

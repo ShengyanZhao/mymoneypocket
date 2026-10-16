@@ -30,6 +30,9 @@ ANCHOR_DAY = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
 RATES = {
     "EUR": {"USD": 1.25, "GBP": 0.8},
     "USD": {"EUR": 0.8, "GBP": 0.64},
+    # The default, so a database that never chose one has a feed that answers
+    # for it: 8 CNY to the euro, and the other two agreed with the pair above.
+    "CNY": {"EUR": 0.125, "USD": 0.15625, "GBP": 0.1},
 }
 
 
@@ -187,12 +190,12 @@ def test_a_dollar_base_asks_the_feed_for_dollar_rates_only(client, feed):
     assert composition["base_currency"] == "USD"
 
 
-def test_a_database_that_never_chose_a_base_is_in_euro(client, feed):
+def test_a_database_that_never_chose_a_base_is_in_renminbi(client, feed):
     _base(None)
     ids = _wealth(client)
-    assert _readings(client, ids)["bases"] == {"EUR"}
+    assert _readings(client, ids)["bases"] == {"CNY"}
     with SessionLocal() as db:
-        assert fx.base_currency(db) == "EUR"
+        assert fx.base_currency(db) == "CNY"
 
 
 def test_a_purchase_debits_the_same_sum_whatever_the_base(client, feed):

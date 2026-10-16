@@ -38,7 +38,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, event  # noqa: E402
 from sqlalchemy.exc import OperationalError  # noqa: E402
 
-from app import advisor, catalogue, composition, database, fx, issuers, prices  # noqa: E402
+from app import advisor, catalogue, composition, database, fx, issuers, models, prices  # noqa: E402
 from app.database import Base, engine  # noqa: E402
 from app.main import app  # noqa: E402
 
@@ -90,8 +90,10 @@ def _schema():
         pass
 
 
-def _empty_every_table() -> None:
-    """Take the rows out of the schema and leave the schema alone.
+def _start_a_test() -> None:
+    """The state every test starts in: an empty schema, and this suite's base.
+
+    The sweep first — take the rows out and leave the schema alone.
 
     Children first — the reverse of SQLAlchemy's dependency order — so the
     foreign keys the app actually runs under stay enforced during the sweep
@@ -112,11 +114,19 @@ def _empty_every_table() -> None:
             conn.exec_driver_sql("DELETE FROM instruments_fts")
         except OperationalError:
             pass
+        # Then the one row the suite does start with: its base currency, which
+        # the sweep took out like everything else. Tests that begin over again
+        # by calling this directly need the same base the ones going through
+        # the fixture get, or a hundred euro records would silently be read as
+        # renminbi ones. What a database that never chose is given is asserted
+        # elsewhere, with this row cleared.
+        conn.execute(models.Setting.__table__.insert().values(key=fx.BASE_CURRENCY_KEY, value="EUR"))
 
 
 @pytest.fixture(autouse=True)
 def empty_database(_schema):
-    """Every test starts with the schema present and no rows in it.
+    """Every test starts with the schema present, no rows in it, and the base
+    this suite records in (see `_start_a_test`).
 
     Autouse rather than something `client` does for itself: seven test files
     open a `SessionLocal()` of their own, and today they are isolated only by
@@ -125,7 +135,7 @@ def empty_database(_schema):
     as its own. The sweep costs a third of a millisecond, so the tests that
     touch no database at all pay nothing for the guarantee.
     """
-    _empty_every_table()
+    _start_a_test()
 
 
 @pytest.fixture()

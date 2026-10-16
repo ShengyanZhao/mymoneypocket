@@ -20,7 +20,7 @@ import datetime
 import json
 
 import pytest
-from conftest import _empty_every_table
+from conftest import _start_a_test
 from sqlalchemy import text
 
 from app import advisor, chat, crud, fx
@@ -114,7 +114,7 @@ def test_the_cards_change_is_the_settings_requests(client, monkeypatch, feed):
     by_chat = _stores()
     assert [e["kind"] for e in events][:3] == ["start", "step", "decided"]
 
-    _empty_every_table()
+    _start_a_test()
     _setup(client)
     saved = client.put("/api/settings/base-currency", json={"base_currency": "USD"})
     assert saved.status_code == 200, saved.text

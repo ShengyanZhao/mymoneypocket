@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { refusal, type Need } from "./required";
 import { apiError } from "./ui";
+import { t } from "../i18n/t.ts";
 
 /* The controller behind "a list of things, with a form above it that both adds
    and edits" — the shape this app is built out of, written thirteen times.
@@ -89,7 +90,7 @@ export function useListEditor<T extends { id: number }, P>(opts: {
       reset();
       await opts.onChanged();
     } catch (err) {
-      setError(apiError(err, opts.saveError ?? "Save failed."));
+      setError(apiError(err, opts.saveError ?? t("common.saveFailed")));
     } finally {
       setSubmitting(false);
     }
@@ -106,7 +107,7 @@ export function useListEditor<T extends { id: number }, P>(opts: {
       if (editId === item.id) reset();
       await opts.onChanged();
     } catch (err) {
-      setError(apiError(err, opts.deleteError ?? "Delete failed."));
+      setError(apiError(err, opts.deleteError ?? t("del.deleteFailed")));
     }
   }
 

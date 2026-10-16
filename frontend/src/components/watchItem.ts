@@ -7,7 +7,13 @@
    and the sentences differ because the symbol means two things: a hint to
    check on a fund's line, the identity on a share's.
 
-   No runtime imports, so `npm test` reaches it. */
+   The sentences are whole catalogue values rather than a suffix glued on
+   here: where the clause a language puts last goes is that language's
+   business.
+
+   No runtime imports besides the catalogue, so `npm test` reaches it. */
+
+import { t } from "../i18n/t.ts";
 
 /** The two fields that say what a line names. */
 export interface WatchedInstrument {
@@ -22,25 +28,16 @@ export function isShare(item: WatchedInstrument): boolean {
 
 /** The line under the name: what identifies it, and the hint beside it. */
 export function identityOf(item: WatchedInstrument): string {
-  if (isShare(item)) return `${item.symbol ?? ""} · share, as Yahoo lists it`;
+  if (isShare(item)) return t("watch.shareIdentity", { symbol: item.symbol ?? "" });
   return [item.isin, item.symbol].filter(Boolean).join(" · ");
 }
-
-const YOURS =
-  " How many, at what price and where are yours too. Recording this leaves the watchlist line where it is: drop it with ✕ when the idea is done.";
 
 /** What the ledger form says when "Record a buy" brings a line into it. */
 export function prefillNote(item: WatchedInstrument): string {
   if (isShare(item)) {
-    return (
-      `${item.symbol}: the symbol Yahoo lists this share under, checked when the card was drawn and again when you accepted it. Check it is the listing you bought on.` +
-      YOURS
-    );
+    return t("watch.prefillShare", { symbol: item.symbol ?? "" });
   }
-  return (
-    (item.symbol
-      ? `${item.isin} · ${item.symbol}: the ISIN identifies the fund; the ticker came from the live lookup, so check it is the listing you actually bought on.`
-      : `${item.isin}. That identifies the fund but does not price it: the ticker of the listing you bought on is still yours to give.`) +
-    YOURS
-  );
+  return item.symbol
+    ? t("watch.prefillFund", { isin: item.isin, symbol: item.symbol })
+    : t("watch.prefillFundBare", { isin: item.isin });
 }
