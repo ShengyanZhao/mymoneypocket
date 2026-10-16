@@ -5,7 +5,7 @@ past point was that day's amounts restated at today's rate, and the past moved
 every time the rate did. A rate is a price, and this series already refuses to
 price the past with today's quotes — so each point is now converted with the
 rates in force on its date, read from the one history `fx.rates_on_days`
-keeps, and says which ECB day that was.
+keeps, and says which reference-rate day that was.
 
 The feed below publishes two very different rates, 1.25 dollars to the euro
 a month ago and 1.00 today, so a point converted at the wrong day's rate is off

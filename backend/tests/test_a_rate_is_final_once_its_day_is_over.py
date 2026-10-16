@@ -32,7 +32,7 @@ YESTERDAY = (TODAY - datetime.timedelta(days=1)).isoformat()
 
 
 class Feed:
-    """The ECB as frankfurter serves it: every day published so far, starting
+    """The feed as frankfurter serves it: every day published so far, starting
     at the one in force on the day asked."""
 
     def __init__(self, monkeypatch, published: dict[str, float]):
@@ -82,7 +82,7 @@ def test_a_day_is_known_only_to_a_feed_asked_after_it_ended(client, monkeypatch)
     """A reading of a past day — a point of the history — used to trust a
     store asked in the last 24 hours. Twenty-four hours says nothing about a
     day whose rate came out after the question: the store cannot know the hour
-    the ECB published, only whether it asked once the day was over. Here it
+    the feed published, only whether it asked once the day was over. Here it
     asked a second before midnight UTC, fresh by the clock for almost a day,
     and the day's own rate is out."""
     over = datetime.datetime.combine(NOW.date(), datetime.time(0), tzinfo=UTC)
@@ -98,7 +98,7 @@ def test_a_day_is_known_only_to_a_feed_asked_after_it_ended(client, monkeypatch)
 
 
 def test_a_debit_of_today_waits_for_todays_rate_and_a_reading_does_not(client, monkeypatch):
-    """Before the ECB publishes, yesterday's rate is the one in force: right
+    """Before the feed publishes, yesterday's rate is the one in force: right
     for a reading of today, which says which day it used and reads again. Wrong
     for a sum fixed today, which would keep yesterday's rate for good. Once the
     day's rate is out, the debit takes it — without waiting a day for the

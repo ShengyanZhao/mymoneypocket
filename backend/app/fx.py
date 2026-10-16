@@ -1,8 +1,12 @@
-"""Foreign-exchange rates (ECB via frankfurter.app) and conversion to the base.
+"""Foreign-exchange rates (the reference-rate feed) and conversion to the base.
 
 Every total is in ONE currency, the base, which the reader's database names in
 `settings` (`base_currency`, read by `base_currency`); anything in another
-currency is converted at the ECB daily reference rate. Rates are stored in the
+currency is converted at the daily reference rate of the source in force —
+named to the reader through `source_name()` and never spelled into the
+sentences that quote it. The shipped source is ECB via frankfurter.app; a
+better one lands through `use_rate_source` (the slot the CN PRD §5.2 keeps
+open for a domestic feed). Rates are stored in the
 DB (fx_rates) one row per published DAY, and kept: the table is the history of
 the rates, and today's rate is simply the one in force today. `rates_on` is the
 one reading of it. If the feed cannot be reached, what is stored keeps serving
@@ -44,11 +48,44 @@ from app import models
 from app.database import commit, read_only
 
 # The key in `settings`, and the base of a database that never chose one — the
-# only base every figure it holds was ever computed in.
+# only base every figure it holds was ever computed in. A database that chose
+# one keeps it: this is only what a reader who never has is given.
 BASE_CURRENCY_KEY = "base_currency"
-DEFAULT_BASE_CURRENCY = "EUR"
+DEFAULT_BASE_CURRENCY = "CNY"
 FRANKFURTER_URL = "https://api.frankfurter.app"
-CACHE_TTL_HOURS = 24  # ECB publishes one reference rate per working day
+CACHE_TTL_HOURS = 24  # one reference rate is published per working day
+
+# --- The source, named and swappable ---------------------------------------
+
+# What the day's reference rate is CALLED where the reader reads it. Every
+# "converted at ..." sentence takes this word from here; naming it in one
+# place is what makes a source change a change of two lines instead of the
+# hundred-odd strings that used to spell "ECB" into prose (PRD §5.2).
+_SOURCE_NAME = "European Central Bank"
+
+
+def source_name() -> str:
+    """The name of the feed these rates came from, for sentences that quote
+    them: 'at the {source_name()} reference rate of the day'. A function and
+    not a constant because the source can change (`use_rate_source`) without
+    re-importing the app."""
+    return _SOURCE_NAME
+
+
+def use_rate_source(name: str, fetch) -> None:
+    """Point the module at another source: `fetch` (in `_fetch_rates`'s shape)
+    takes over the network seam and `name` becomes what the reader is told.
+
+    THE SLOT for a domestic feed (PRD §5.2, CFETS 人民币中间价 or a bank's
+    published rates). Measured 2026-10-16 from a Beijing line: chinamoney's
+    and SAFE's rate endpoints answered 404 and the bank-quote API that did
+    answer carries only TODAY's spread quotes — no dated history, which is
+    what this module is built on (a catch-up converts at the day a dividend
+    was paid months back). So the shipped source is the one that has the
+    history, and this is where a better one lands when it exists."""
+    global _SOURCE_NAME, _fetch_rates
+    _SOURCE_NAME = name
+    _fetch_rates = fetch
 
 
 class FxError(Exception):
@@ -60,11 +97,11 @@ class BaseRatesUnavailable(Exception):
 
 
 class BaseNotQuoted(ValueError):
-    """A base the ECB's feed does not quote: no total could be converted into
+    """A base the reference-rate feed does not quote: no total could be converted into
     it (`crud.change_base`)."""
 
 
-# The first day the ECB published reference rates. A figure dated before it
+# The first day the feed published reference rates. A figure dated before it
 # has no rate in any base, and a store cannot be asked to reach further back.
 FEED_FIRST_DAY = "1999-01-04"
 
@@ -73,7 +110,7 @@ def base_currency(db: Session) -> str:
     """The currency every total of this database is in.
 
     Read from `settings`, where the reader's choice is kept; a database that has
-    never made one is in EUR, the base it has always had. Nothing else decides
+    never made one is in the default, the base it is given. Nothing else decides
     it — no import-time constant, no process-wide value — so two processes over
     two files each read their own."""
     row = db.get(models.Setting, BASE_CURRENCY_KEY)
@@ -82,7 +119,7 @@ def base_currency(db: Session) -> str:
 
 
 def _fetch_rates(base: str, start: str, end: str | None = None) -> dict[str, dict[str, float]]:
-    """{day: {currency: rate}} for every day the ECB published from the day in
+    """{day: {currency: rate}} for every day the feed published from the day in
     force on `start` up to `end` (or up to its latest, when `end` is None):
     units of each currency per 1 `base`, which is itself never in the dict.
 
@@ -131,7 +168,7 @@ def _asked_for_newer(db: Session, base: str) -> datetime.datetime | None:
 
 
 def _day_over(day: str) -> datetime.datetime:
-    """The moment `day` is over for the feed: midnight UTC after it. The ECB
+    """The moment `day` is over for the feed: midnight UTC after it. The feed
     publishes a day's rates that afternoon, so a question asked after this has
     heard every rate the day will ever have."""
     after = datetime.date.fromisoformat(day) + datetime.timedelta(days=1)
@@ -165,9 +202,9 @@ def rates_on(
 def rates_on_days(
     db: Session, base: str, days: list[str], refresh: bool = False
 ) -> dict[str, dict[str, dict]]:
-    """{day: {currency: {"rate": float, "as_of": ECB day}}} — for each of
+    """{day: {currency: {"rate": float, "as_of": reference-rate day}}} — for each of
     `days`, the rates in force on it against `base`: those of the latest day
-    the ECB published on or before it. The ONE reading of the rates, for today
+    the feed published on or before it. The ONE reading of the rates, for today
     and for any other day; `rates_on` asks it about a single day.
 
     Many days at once because the net worth history asks about every point it
@@ -178,7 +215,7 @@ def rates_on_days(
 
     The day in force is chosen whole, the way the feed itself chooses it: a
     currency that day does not list is unknown, not borrowed from an older day.
-    The ECB stops publishing currencies (the lev at the end of 2025), and a rate
+    The feed stops publishing currencies (the lev at the end of 2025), and a rate
     months out of date wearing a recent date is the confident wrong answer.
 
     WHEN THE FEED IS ASKED. Only when what is stored cannot answer, and only
@@ -234,7 +271,7 @@ def rates_on_days(
             try:
                 fetched = _fetch_rates(base, start, end)
             except Exception:
-                fetched = {}  # offline / feed down / a day before the ECB's first
+                fetched = {}  # offline / feed down / a day before the feed's first
             if fetched:
                 _store(db, base, fetched, asked_for_newer=end is None)
                 fetched_any = True
@@ -357,7 +394,7 @@ _MINOR_ANY_CASE = {
 
 
 def feed_currencies(db: Session) -> list[str]:
-    """The currencies a base can be: those the ECB feed quotes today against
+    """The currencies a base can be: those the feed feed quotes today against
     the current base, and the base itself (the feed never lists the base among
     its own rates). Only the current base when the feed has never answered."""
     base = base_currency(db)
@@ -368,8 +405,8 @@ def rates_for(
     db: Session, currencies: Iterable[str]
 ) -> tuple[str | None, dict[str, float], list[str]]:
     """The rates in force today against the base for `currencies`, spelt as
-    records spell them: the ECB day they were published, {code: units of it per
-    one unit of the base}, and the spellings the ECB publishes no rate for.
+    records spell them: the reference-rate day they were published, {code: units of it per
+    one unit of the base}, and the spellings the feed publishes no rate for.
 
     A minor unit is read as its major one, as every conversion reads it, so
     pence ask for the pound's rate; the base itself needs none and is left out.
@@ -379,7 +416,7 @@ def rates_for(
     For the chat's picture, which converted every total at these rates and
     never said what they were: in the reader's second test round (2026-10-08)
     the chat answered that it had no exchange rate, with the app holding the
-    ECB's."""
+    feed's."""
     base = base_currency(db)
     wanted: dict[str, str] = {}
     for written in currencies:
@@ -424,10 +461,10 @@ def choose_base(db: Session, new_base: str, since: str | None) -> None:
     stored = _stored_days(db, new_base)
     if not stored or stored[0] > first or not rates_on(db, new_base, today):
         raise BaseRatesUnavailable(
-            f"The ECB rates against {new_base} could not be fetched, so the base "
-            f"is still {base_currency(db)}: without them every amount in another "
-            f"currency would be added to the totals as if it were in {new_base}. "
-            "Try again when the app can reach the rate feed."
+            f"The {source_name()} reference rates against {new_base} could not be "
+            f"fetched, so the base is still {base_currency(db)}: without them every "
+            f"amount in another currency would be added to the totals as if it were "
+            f"in {new_base}. Try again when the app can reach the rate feed."
         )
     row = db.get(models.Setting, BASE_CURRENCY_KEY)
     if row is None:
@@ -462,7 +499,7 @@ class Converter:
     `on` is the day whose rates it converts at — today when left out. A
     reading of a past day converts at that day's rates, for the reason the net
     worth history does not price its past with today's quotes: a rate is a
-    price. `used_as_of` then reports the ECB day that was actually in force."""
+    price. `used_as_of` then reports the reference-rate day that was actually in force."""
 
     def __init__(
         self, db: Session, on: str | None = None, _load=None, base: str | None = None
@@ -665,7 +702,7 @@ def convert_on(
     db: Session, amount: float, from_currency: str, to_currency: str, day: str
 ) -> tuple[float | None, str | None]:
     """`amount` in `from_currency` restated in `to_currency` at the rates in
-    force on `day`, and the ECB day those rates were published — or
+    force on `day`, and the reference-rate day those rates were published — or
     (None, None) when a rate that day is unknown.
 
     For a figure that is FIXED on its day rather than restated whenever it is
@@ -706,7 +743,7 @@ def _final(db: Session, base: str, day: str, rate_day: str | None) -> bool:
     Its own publication is. An earlier one is only once nothing can have been
     published between them: a later day is stored (the history is contiguous),
     or the feed was asked for newer days after `day` was over. Until then the
-    day in force is only the latest one heard of — on a morning before the ECB
+    day in force is only the latest one heard of — on a morning before the feed
     publishes, yesterday's — and a debit written at it would keep yesterday's
     rate for good."""
     if rate_day is None:

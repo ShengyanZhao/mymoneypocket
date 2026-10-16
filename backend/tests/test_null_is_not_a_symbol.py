@@ -140,7 +140,25 @@ _LINE = (
 )
 
 
-def test_the_migration_clears_the_word_on_a_funds_line_and_nothing_else(one_migration_behind):
+@pytest.fixture
+def before_the_word_migration(tmp_path, start_on):
+    """A file the real chain built up to `5a4336780500`, which the next
+    `database.init_db()` starts on. Named by its revision and not as "one
+    behind the head": the head has moved since (`b7c1d0a24e11` and whatever
+    comes next), and this test is about THIS migration's step, whatever runs
+    after it — the same reason `test_the_chat_searches_and_checks.py` pins its
+    own (`before_the_share_migration`)."""
+    path = tmp_path / "data.db"
+    cfg = Config()
+    cfg.set_main_option("script_location", str(database.BASE_DIR / "alembic"))
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(database, "DATABASE_URL", f"sqlite:///{path}")
+        command.upgrade(cfg, "5a4336780500")
+    start_on(path)
+    return path
+
+
+def test_the_migration_clears_the_word_on_a_funds_line_and_nothing_else(before_the_word_migration):
     """What the reader's `data.db` takes at its next start, behind the app's
     own copy: a fund's line whose symbol is a word for nothing loses it, and
     every other line, and every other column, stays as it was. A share's line
@@ -153,7 +171,7 @@ def test_the_migration_clears_the_word_on_a_funds_line_and_nothing_else(one_migr
         ("XA0000000052", None, "Example Fund 5"),
         (None, "NULL", "Example Share"),
     ]
-    with closing(sqlite3.connect(one_migration_behind)) as conn, conn:
+    with closing(sqlite3.connect(before_the_word_migration)) as conn, conn:
         for line in lines:
             conn.execute(_LINE, line)
         before = conn.execute("SELECT * FROM watchlist_items ORDER BY id").fetchall()
@@ -161,12 +179,12 @@ def test_the_migration_clears_the_word_on_a_funds_line_and_nothing_else(one_migr
     database.init_db()
 
     copies = list(
-        one_migration_behind.parent.glob(
-            "data.db.bak-*-before-migration-5a4336780500-to-e62c6f6c8060"
+        before_the_word_migration.parent.glob(
+            "data.db.bak-*-before-migration-5a4336780500-to-*"
         )
     )
     assert len(copies) == 1, "the app copied the file before migrating it"
-    with closing(sqlite3.connect(one_migration_behind)) as conn, conn:
+    with closing(sqlite3.connect(before_the_word_migration)) as conn, conn:
         after = conn.execute("SELECT * FROM watchlist_items ORDER BY id").fetchall()
         symbol = [row[1] for row in conn.execute("PRAGMA table_info(watchlist_items)")].index(
             "symbol"
@@ -179,7 +197,7 @@ def test_the_migration_clears_the_word_on_a_funds_line_and_nothing_else(one_migr
     cfg = Config()
     cfg.set_main_option("script_location", str(database.BASE_DIR / "alembic"))
     command.downgrade(cfg, "5a4336780500")
-    with closing(sqlite3.connect(one_migration_behind)) as conn, conn:
+    with closing(sqlite3.connect(before_the_word_migration)) as conn, conn:
         assert conn.execute("SELECT * FROM watchlist_items ORDER BY id").fetchall() == after, (
             "the downgrade writes nothing back"
         )

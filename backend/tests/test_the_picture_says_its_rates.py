@@ -2,8 +2,8 @@
 
 The reader's second test round of the chat (2026-10-08): asked about a figure
 in dollars, the chat answered that it had no exchange rate, with the app
-holding the ECB's and every total in the picture converted at them. Brief AL:
-one line under the base, the ECB's rates in force today for every currency on
+holding the feed's and every total in the picture converted at them. Brief AL:
+one line under the base, the feed's rates in force today for every currency on
 record that is not the base, with the day they were published; none when
 everything is in the base.
 
@@ -59,7 +59,7 @@ def test_the_rates_of_the_currencies_on_record_are_in_the_picture(client, ecb):
     line = _rates_line(_picture())
 
     assert line == (
-        "Exchange rates: the ECB's reference rates, which the app keeps; those in "
+        "Exchange rates: the reference rates, which the app keeps; those in "
         f"force today were published on {PUBLISHED}: 1 EUR = 0.9312 CHF, 1.1403 USD."
     )
 
@@ -92,7 +92,7 @@ def test_a_currency_the_ecb_does_not_publish_is_named_as_such(client, ecb):
 
     line = _rates_line(_picture())
 
-    assert line.endswith("1 EUR = 1.1403 USD. The ECB publishes no rate for Dlr.")
+    assert line.endswith("1 EUR = 1.1403 USD. The feed publishes no rate for Dlr.")
 
 
 def test_the_rates_are_read_like_any_conversion_of_today(client, ecb, monkeypatch):

@@ -1,4 +1,4 @@
-"""FX conversion (ECB rates): caching, the lazy converter, and the
+"""FX conversion (reference rates): caching, the lazy converter, and the
 multi-currency portfolio/summary behavior. Network is monkeypatched."""
 
 from __future__ import annotations
@@ -184,7 +184,7 @@ def test_the_rates_endpoint_lists_only_the_base_it_converts_to(client, monkeypat
 # --- a rate is kept for its day ---------------------------------------------
 #
 # The table is the history of the rates, and `rates_on` is its one reading.
-# Days below are real ECB days measured on 2026-09-15: 2026-06-12 is a Friday
+# Days below are real reference-rate days measured on 2026-09-15: 2026-06-12 is a Friday
 # and 2026-06-15 the Monday after it; 2025-12-31 is the last day the lev (BGN)
 # was published.
 
@@ -211,7 +211,7 @@ def test_a_day_with_no_publication_takes_the_working_day_before_it(client, monke
 def test_a_currency_that_day_does_not_list_is_not_borrowed_from_an_older_one(
     client, monkeypatch
 ):
-    """The day in force is chosen whole. The ECB last published the lev on
+    """The day in force is chosen whole. The feed last published the lev on
     2025-12-31; a reading of 5 January that went looking for the latest BGN
     rate on its own would convert at a rate from the previous year while
     reporting a day in January."""
@@ -330,7 +330,7 @@ def test_unknown_rate_leaves_row_unpriced(client, monkeypatch):
 
 
 def test_holding_book_currency_converts_in_summary_and_portfolio(client, monkeypatch):
-    """A holding whose recorded value is in USD converts at the ECB rate."""
+    """A holding whose recorded value is in USD converts at the feed rate."""
     iid = client.post("/api/institutions", json={"name": "Broker"}).json()["id"]
     sid = client.post(f"/api/institutions/{iid}/snapshots", json={"date": TODAY}).json()["id"]
     client.post(
@@ -347,7 +347,7 @@ def test_holding_book_currency_converts_in_summary_and_portfolio(client, monkeyp
 
 
 def test_a_converted_book_value_carries_its_rate_date(client, monkeypatch):
-    """[09] A number restated at an ECB rate has to say which rate.
+    """[09] A number restated at a reference rate has to say which rate.
 
     Nothing here is priceable — no ticker, no quantity — so the only FX work in
     the whole view is the book value. It used to be done by a converter the

@@ -12,7 +12,7 @@ convert" are two different questions and the app used to ask neither:
     states a currency stops that at the door.
 
   * `TWD` IS a real currency, a Taipei-listed fund is a legitimate holding, and
-    the ECB does not quote it — so the allowed list the base-currency setting
+    the feed does not quote it — so the allowed list the base-currency setting
     validates against would refuse something the reader owns. `GBp` is the same
     case. For those the total cannot be made right, only HONEST: the amount
     stays in (a total quietly short by a holding is as wrong as one quietly
@@ -29,7 +29,7 @@ import datetime
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from app import models, schemas
+from app import fx, models, schemas
 from app.database import SessionLocal
 
 TODAY = datetime.date.today().isoformat()
@@ -123,9 +123,9 @@ def test_a_real_code_the_feed_does_not_quote_is_accepted(client):
     """The trap, asserted so that tightening the rule to the feed's list later
     fails here first.
 
-    `TWD` is a real currency the ECB does not publish a rate for, and a
+    `TWD` is a real currency the feed does not publish a rate for, and a
     Taipei-listed fund is an ordinary thing to own. `GBp` is pence, which London
-    genuinely quotes and the ECB genuinely does not. Validating the boxes against
+    genuinely quotes and the feed genuinely does not. Validating the boxes against
     `fx.feed_currencies` — the list the BASE is chosen from — would refuse both.
     """
     for code in ("TWD", "GBp", "twd"):
@@ -136,7 +136,7 @@ def test_a_real_code_the_feed_does_not_quote_is_accepted(client):
     # And the base, which is a different question, still refuses it.
     refused = client.put("/api/settings/base-currency", json={"base_currency": "TWD"})
     assert refused.status_code == 422
-    assert "not a currency the ECB rate feed quotes" in refused.json()["detail"]
+    assert f"not a currency the {fx.source_name()} reference-rate feed quotes" in refused.json()["detail"]
 
 
 def test_a_row_stored_before_the_rule_can_still_be_read_and_corrected(client):

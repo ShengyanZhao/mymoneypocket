@@ -243,7 +243,7 @@ def test_a_dollar_dividend_is_gross_and_converted_and_the_statement_corrects_bot
     """Two flags on one row, for two different approximations. `estimated`
     says the figure is the market's GROSS — the withholding estimate reads it
     to find what is still untaxed. `fx_as_of` says it was converted at the
-    ECB's rate of the ex-date. The credit on the statement is net AND at the
+    the feed's rate of the ex-date. The credit on the statement is net AND at the
     broker's rate, so typing it in retires both, and the withholding stops
     being applied to money that already had it taken."""
     iid = _dollar_dividend(client, monkeypatch)

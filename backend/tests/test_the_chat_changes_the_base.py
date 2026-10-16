@@ -4,13 +4,13 @@ Brief AN, item 7 (2026-10-10). In the reader's second test round the chat was
 asked to change the base currency and could not. `change_base_currency` goes
 through `crud.change_base`, the function the settings request calls since
 this brief (the request's own checks moved into it, its statuses and
-sentences unchanged): a code the ECB's feed does not quote is refused, and the
+sentences unchanged): a code the reference-rate feed does not quote is refused, and the
 new base's rates are stored before the setting changes, or nothing changes.
 It asks the feed while it writes, so it runs as the analysis runs, on the
 stream and outside the confirmation's unit of work, said as one step.
 
 The card says what changes (every figure shown), what does not (nothing
-stored is rewritten) and that the ECB's feed is asked. The feeds here are
+stored is rewritten) and that the reference-rate feed is asked. The feeds here are
 invented and agree: one euro is 1.25 dollars.
 """
 
@@ -131,7 +131,7 @@ def test_the_card_says_what_changes_what_does_not_and_that_the_feed_is_asked(cli
     said = card["consequence"]
     assert "Every total and figure the app shows is shown in USD from then on" in said
     assert "Nothing stored is rewritten: every amount keeps the currency it was recorded in" in said
-    assert f"asks the ECB's feed for its rates against USD from {ANCHOR_DAY} to today" in said
+    assert f"asks the reference-rate feed for its rates against USD from {ANCHOR_DAY} to today" in said
     assert "if the feed does not answer, nothing changes" in said
 
 
@@ -140,7 +140,7 @@ def test_the_step_says_the_rates_were_stored_and_the_base_moved(client, monkeypa
     card = _draw(client, monkeypatch)
     events = _events(_confirm(client, monkeypatch, card))
     (step,) = [e for e in events if e["kind"] == "step"]
-    assert step["label"] == "The ECB's rates against USD fetched and stored, and the base changed"
+    assert step["label"] == f"The {fx.source_name()} rates against USD fetched and stored, and the base changed"
     (decided,) = [e["card"] for e in events if e["kind"] == "decided"]
     assert decided["outcome"] == "confirmed" and decided["done"] == "Base changed"
     assert decided["result"] == {"base_currency": "USD", "was": "EUR"}
@@ -163,7 +163,7 @@ def test_a_feed_that_does_not_answer_changes_nothing_and_says_so(client, monkeyp
 @pytest.mark.parametrize(
     "currency, said",
     [
-        ("XYZ", "XYZ is not a currency the ECB rate feed quotes"),
+        ("XYZ", f"XYZ is not a currency the {fx.source_name()} reference-rate feed quotes"),
         ("EUR", "EUR is the base already: nothing would change."),
     ],
 )
@@ -192,7 +192,7 @@ def test_the_settings_request_keeps_its_statuses(client, feed):
     _setup(client)
     refused = client.put("/api/settings/base-currency", json={"base_currency": "XYZ"})
     assert refused.status_code == 422
-    assert "XYZ is not a currency the ECB rate feed quotes" in refused.json()["detail"]
+    assert f"XYZ is not a currency the {fx.source_name()} reference-rate feed quotes" in refused.json()["detail"]
     feed.offline = True
     down = client.put("/api/settings/base-currency", json={"base_currency": "USD"})
     assert down.status_code == 503

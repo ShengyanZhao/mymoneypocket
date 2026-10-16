@@ -16,6 +16,21 @@ rule for a special kind of instrument — a bond rate, a fund wrapper, a holding
 period — that is the line being crossed, and the honest move is to delete this
 module rather than grow it.
 
+AMENDED 2026-10-16 (CN, PRD §5.1). The paragraph above names a holding-period
+rule as the future edit that crosses its line, and China's dividend tax walked
+over that line deliberately: 股息红利差别化 (财税[2015]101号) is not a carve-out
+beside a headline rate — 20% / 10% / 免征 BY HOLDING PERIOD is the headline,
+keyed on one fact the ledger already holds, the age of the shares that earned
+the dividend. What keeps this module the thing it was, three ways: the
+schedule is still a DECLARATION the reader can see and overwrite (a flat rate
+typed beside it wins), it is still applied only to figures the ledger already
+holds, and its figure still never enters a total. And the table's own contract
+is kept rather than waved through — every carve-out the schedule does NOT
+model (基金分红免征, 港股通 H 股 20%, 境外股票 20%, 印花税, the works) is named
+in `omits`, which remains the reason these tables are allowed to be this
+short. Precise-and-wrong is still the failure this file exists to avoid; the
+schedule is the one place the law itself is a schedule.
+
 WHERE IT APPLIES. Two places, both of which already hold the number:
 the realized capital gain the ledger computed, and the dividends the ledger
 collected. Nowhere else.
@@ -28,6 +43,7 @@ an aid to deciding instead of something impersonating a tax return.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 from sqlalchemy import text
@@ -38,6 +54,11 @@ from sqlalchemy.orm import Session
 COUNTRY = "tax_country"
 CAPITAL_GAINS = "capital_gains_rate"
 DIVIDEND_WITHHOLDING = "dividend_withholding_rate"
+# The one schedule (the amendment at the top): a JSON list of [days_max, rate]
+# pairs, the last days_max null. Stored apart from the flat rate because one
+# box cannot hold three numbers, and typed OVER by the flat rate whenever the
+# reader declares one.
+DIVIDEND_TIERS = "dividend_tiers"
 
 # Rates are stored and handled as PERCENT, never as a fraction. The app already
 # has one rate on a model — `Liability.interest_rate`, printed as "%/yr" — and
@@ -52,12 +73,20 @@ class Default:
     `omits` is not a disclaimer bolted on afterwards — it is the reason this
     table is allowed to be this short. Each entry names the carve-outs it is
     knowingly flattening, so a reader can see whether the flat number is close
-    enough for them before they trust it, and correct it when it is not."""
+    enough for them before they trust it, and correct it when it is not.
+
+    `dividend_tiers` is the one schedule this table may carry (the amendment
+    above): (days-held cap INCLUSIVE, rate PERCENT) ascending, the last cap
+    None meaning "beyond every cap". A country whose dividend rate is not one
+    number leaves `dividend_withholding` None and carries its schedule here,
+    which is what makes the pre-fill honest — one box cannot hold three
+    rates."""
 
     capital_gains: float
-    dividend_withholding: float
+    dividend_withholding: float | None
     regime: str
     omits: str
+    dividend_tiers: tuple[tuple[int | None, float], ...] | None = None
 
 
 # WHICH DEFAULTS SHIP, AND WHY SO FEW. Every country here is a claim this
@@ -101,6 +130,21 @@ DEFAULTS: dict[str, Default] = {
         "the progressive scale instead can cost less, and life insurance keeps "
         "the older 17.2% social rate.",
     ),
+    "China": Default(
+        0.0,
+        None,
+        "股息红利差别化 20%/10%/免征 by holding period (财税[2015]101号); "
+        "A 股与公募基金转让价差暂免征收个人所得税",
+        "The schedule beside this entry covers A-share cash dividends only, "
+        "and by the age of the shares that earned them (先进先出, estimated). "
+        "Left out, each of which is its own number: 基金分红免征个人所得税; "
+        "境外股票股息与转让价差 20%; 港股通 H 股股息 20%; 印花税 0.05% on a "
+        "sale only (already inside the broker's fees the ledger records); "
+        "过户费/经手费; and 工资薪金个税 (a different table entirely). "
+        "capital gains 0 here is the 暂免 for mainland listings — a gain on "
+        "something OUTSIDE the mainland is 20% and is not this line.",
+        dividend_tiers=((30, 20.0), (365, 10.0), (None, 0.0)),
+    ),
 }
 
 
@@ -119,17 +163,27 @@ def default_for(country: str | None) -> Default | None:
 
 @dataclass(frozen=True, slots=True)
 class Rates:
-    """What the reader declared. Any of the three may be unset, and unset is a
+    """What the reader declared. Any of them may be unset, and unset is a
     real answer — distinct from zero, which would be a reader claiming they pay
-    no tax."""
+    no tax.
+
+    `dividend_tiers` is the declared schedule (the amendment at the top):
+    (days-held cap INCLUSIVE, rate PERCENT) ascending, the last cap None. It
+    is not an alternative the module reaches for on its own — the reader
+    declares it, or types a flat rate beside it and the flat rate wins."""
 
     country: str | None
     capital_gains: float | None
     dividend_withholding: float | None
+    dividend_tiers: tuple[tuple[int | None, float], ...] | None = None
 
     @property
     def any_set(self) -> bool:
-        return self.capital_gains is not None or self.dividend_withholding is not None
+        return (
+            self.capital_gains is not None
+            or self.dividend_withholding is not None
+            or self.dividend_tiers is not None
+        )
 
 
 def _get(db: Session, key: str) -> str | None:
@@ -169,12 +223,35 @@ def _rate(raw: str | None) -> float | None:
         return None
 
 
+def _tiers(raw: str | None) -> tuple[tuple[int | None, float], ...] | None:
+    """A stored schedule as pairs, or None when there is none or it will not
+    read. Unreadable is absent, for `_rate`'s reason: a hand-edited row must
+    not take down the portfolio page for a figure that sits beside totals."""
+    if raw is None:
+        return None
+    try:
+        rows = json.loads(raw)
+        pairs = tuple(
+            (None if cap is None else int(cap), float(rate)) for cap, rate in rows
+        )
+    except (ValueError, TypeError):
+        return None
+    return pairs or None
+
+
+def _tiers_json(tiers: tuple[tuple[int | None, float], ...] | None) -> str | None:
+    if not tiers:
+        return None
+    return json.dumps([[cap, rate] for cap, rate in tiers])
+
+
 def read_rates(db: Session) -> Rates:
-    """The three settings, as they stand."""
+    """The declared rates and schedule, as they stand."""
     return Rates(
         country=_get(db, COUNTRY),
         capital_gains=_rate(_get(db, CAPITAL_GAINS)),
         dividend_withholding=_rate(_get(db, DIVIDEND_WITHHOLDING)),
+        dividend_tiers=_tiers(_get(db, DIVIDEND_TIERS)),
     )
 
 
@@ -184,10 +261,13 @@ def write_rates(
     country: str | None,
     capital_gains: float | None,
     dividend_withholding: float | None,
+    dividend_tiers: tuple[tuple[int | None, float], ...] | None = None,
 ) -> Rates:
-    """Replace all three. Each is independently clearable — a reader who knows
+    """Replace them all. Each is independently clearable — a reader who knows
     their dividend rate and not their gains rate is in a legitimate state, and
-    the estimate says which half it could not compute."""
+    the estimate says which half it could not compute. A flat dividend rate
+    and a schedule can be set at once; the flat one wins (`estimate`), because
+    it is the more specific declaration."""
     _set(db, COUNTRY, (country or "").strip() or None)
     _set(db, CAPITAL_GAINS, None if capital_gains is None else str(capital_gains))
     _set(
@@ -195,6 +275,7 @@ def write_rates(
         DIVIDEND_WITHHOLDING,
         None if dividend_withholding is None else str(dividend_withholding),
     )
+    _set(db, DIVIDEND_TIERS, _tiers_json(dividend_tiers))
     db.commit()
     return read_rates(db)
 
@@ -215,14 +296,28 @@ BASIS_CAVEATS = (
 )
 
 
+def _tier_rate(
+    tiers: tuple[tuple[int | None, float], ...], days: int
+) -> float:
+    """The schedule's rate for a holding period of `days`: the first cap the
+    age fits under, caps inclusive — 30 days is the "one month or less" tier of
+    财税[2015]101号 and 365 the "one year or less", and only a day past either
+    moves down. The uncapped tail is the last pair."""
+    for cap, rate in tiers:
+        if cap is None or days <= cap:
+            return rate
+    return tiers[-1][1]
+
+
 def estimate(
     rates: Rates,
     *,
     realized: float,
     dividends_estimated: float,
     dividends_recorded: float,
+    dividends_held_for: list[tuple[float, int]] | None = None,
 ) -> dict:
-    """The estimate, from the two bases the portfolio already computed.
+    """The estimate, from the bases the portfolio already computed.
 
     Pure: it takes numbers, not a session, so what it claims can be checked
     without a database.
@@ -234,6 +329,15 @@ def estimate(
     exactly the rows somebody took the trouble to correct, which is the
     diligent reader being punished for their diligence — a bug this project has
     already paid for once under that name.
+
+    `dividends_held_for` is the estimated dividends as (gross amount, days the
+    shares that earned it had been held) — the ledger's own rows, aged by the
+    walk that collected them (`positions.replay`). Given, and with a schedule
+    declared, each amount takes its TIER's rate (`_tier_rate`) and
+    `dividends_by_rate` says what fell where. A declared FLAT rate is the more
+    specific declaration and wins over any schedule. Given neither, the
+    dividend half is one of the `missing_rates` — a schedule without ages is a
+    rate that cannot be picked.
     """
     taxable_gain = max(realized, 0.0)
     realized_loss = max(-realized, 0.0)
@@ -243,11 +347,18 @@ def estimate(
         if rates.capital_gains is not None
         else None
     )
-    div_tax = (
-        dividends_estimated * rates.dividend_withholding / 100.0
-        if rates.dividend_withholding is not None
-        else None
-    )
+    dividends_by_rate: list[dict] = []
+    if rates.dividend_withholding is not None:
+        div_tax = dividends_estimated * rates.dividend_withholding / 100.0
+    elif rates.dividend_tiers is not None and dividends_held_for:
+        by_rate: dict[float, float] = {}
+        for amount, days in dividends_held_for:
+            rate = _tier_rate(rates.dividend_tiers, days)
+            by_rate[rate] = by_rate.get(rate, 0.0) + amount
+        div_tax = sum(a * r / 100.0 for r, a in by_rate.items())
+        dividends_by_rate = [{"rate": r, "amount": a} for r, a in sorted(by_rate.items())]
+    else:
+        div_tax = None
 
     # A total only when every base that has something in it has a rate to
     # apply. Summing the halves that happen to be computable would produce a
@@ -256,7 +367,7 @@ def estimate(
     missing: list[str] = []
     if taxable_gain > 0 and rates.capital_gains is None:
         missing.append("capital gains")
-    if dividends_estimated > 0 and rates.dividend_withholding is None:
+    if dividends_estimated > 0 and div_tax is None:
         missing.append("dividend withholding")
     total = (
         (cg_tax or 0.0) + (div_tax or 0.0)
@@ -284,6 +395,14 @@ def estimate(
             "so they are already net of whatever your broker withheld. No rate is "
             "applied to them."
         )
+    if dividends_by_rate:
+        caveats.append(
+            "The dividend schedule was applied to the age of the shares that "
+            "earned each dividend, aged against your recorded purchases "
+            "(first bought, first aged). A share whose purchase the ledger does "
+            "not know is aged from the situation that first recorded it, which "
+            "is the earliest date this app has for it."
+        )
     known = default_for(rates.country)
     if known is not None:
         caveats.append(f"{rates.country}: {known.omits}")
@@ -299,6 +418,10 @@ def estimate(
         "dividends_gross_estimated": dividends_estimated,
         "dividends_recorded_net": dividends_recorded,
         "dividend_withholding": div_tax,
+        # What fell in which tier of a declared schedule — the schedule's own
+        # reading of the base, beside the flat figure above. Empty whenever no
+        # schedule was applied.
+        "dividends_by_rate": dividends_by_rate,
         "total": total,
         "missing_rates": missing,
         "regime": known.regime if known is not None else None,

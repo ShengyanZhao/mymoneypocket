@@ -759,7 +759,7 @@ def test_the_write_tools_do_not_run_when_the_model_calls_them(client):
         "set_cash_balance",
         # And the goals (test_the_chat_writes_a_goal.py).
         "write_goal",
-        # And the base, which asks the ECB's feed while it writes, so it walks
+        # And the base, which asks the reference-rate feed while it writes, so it walks
         # as the analysis does (test_the_chat_changes_the_base.py).
         "change_base_currency",
         # Brief AO: a PAC's amount, as its form changes it
@@ -841,7 +841,7 @@ def test_a_purchase_across_two_currencies_shows_the_debit_and_the_day_of_its_rat
     with SessionLocal() as db:
         card = _card(db, "record_transaction", **purchase)
         assert card["title"] == (
-            f"record buy: 1 AAPL @ 100.00 USD = 80.00 EUR (at the ECB rate of {day}) "
+            f"record buy: 1 AAPL @ 100.00 USD = 80.00 EUR (at the {fx.source_name()} reference rate of {day}) "
             f"· Broker A · {day}"
         )
         assert _confirm(db, card)["ok"] is True
@@ -864,7 +864,7 @@ def test_a_purchase_across_two_currencies_shows_the_debit_and_the_day_of_its_rat
 
 def _london_buy(client, monkeypatch, price_currency):
     """100 units at 50 in `price_currency`, paid from a EUR account, on a day
-    whose ECB rate is 0.80 GBP to the euro: the measured case of 2026-09-22."""
+    whose reference rate is 0.80 GBP to the euro: the measured case of 2026-09-22."""
     day = "2026-08-28"
     monkeypatch.setattr(
         fx, "_fetch_rates", lambda base, start, end=None: {day: {"GBP": 0.80, "USD": 1.25}}

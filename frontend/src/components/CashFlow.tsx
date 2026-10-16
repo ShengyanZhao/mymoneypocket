@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { tOpt, useT, type MessageKey } from "../i18n/index.ts";
 import {
   createExpense,
   createIncomeSource,
@@ -32,15 +33,17 @@ import {
 } from "../api/accumulationPlans";
 import { getInstitutions, type Institution } from "../api/institutions";
 import { getAllCashAnchors, type CashAnchor } from "../api/cash";
+import { getTaxonomy, type TaxonomyRead } from "../api/imports";
 import { accountCurrencyOn } from "./proposedCurrency";
 import { askBeforeDeleting } from "./cashDelete";
 import { InstrumentPicker, type InstrumentChoice } from "./InstrumentPicker";
+import StatementImport from "./StatementImport";
 import { getPortfolio, type PortfolioRow } from "../api/portfolio";
 import {
   EditorButtons,
   Row,
   RowsOrEmpty,
-  SAVINGS_RATE,
+  savingsRate,
   Section,
   StatCard,
   apiError,
@@ -51,16 +54,16 @@ import {
   CURRENCY_LIST,
 } from "./ui";
 import { useListEditor, type Draft } from "./listEditor";
-import { IN_FORCE, leftOutLine, notCounted, undatedLine } from "./inForce";
+import { inForceIntro, leftOutLine, notCounted, undatedLine } from "./inForce";
 import { EXPENSE as EXPENSE_NEEDS, INCOME as INCOME_NEEDS, PLAN, TRANSFER, marks, refusal, type Need } from "./required";
 import {
-  FIRST_PAYMENT_NOTE,
-  PLAN_DATE_LABEL,
-  PLAN_NOTE,
   afterSaveLine,
+  firstPaymentNote,
   flowDateLabel,
   pastBuys,
   pastBuysWarning,
+  planDateLabel,
+  planNote,
   startsLine,
 } from "./firstDate";
 import type { Focus } from "../nav";
@@ -69,11 +72,15 @@ const KINDS = ["", "active", "passive"];
 const NATURES = ["", "essential", "discretionary"];
 const FREQUENCIES = ["", "monthly", "quarterly", "semiannual", "annual", "one_off"];
 const PAC_FREQUENCIES = ["monthly", "quarterly", "semiannual", "annual"];
-const INCOME_CATEGORIES = ["", "salary", "freelance", "business", "rental", "dividends", "interest", "pension", "other"];
-const EXPENSE_CATEGORIES = ["", "housing", "food", "transport", "utilities", "health", "insurance", "debt", "leisure", "education", "other"];
+// The category words come from the backend (`GET /api/taxonomy`, see
+// `app/taxonomy.py`), fetched in `loadAll` and passed to each section: the
+// importer's rules and these boxes read one vocabulary now, and a copy typed
+// here cannot drift from it. Rows stored under an OLD code are shown and saved
+// under its new name (the aliases), so the vocabulary converges as rows are
+// touched instead of by a migration rewriting the reader's history.
 
-function pct(x: number | null): string {
-  return x == null ? "n/a" : `${Math.round(x * 100)}%`;
+function pct(tr: ReturnType<typeof useT>, x: number | null): string {
+  return x == null ? tr("common.na") : `${Math.round(x * 100)}%`;
 }
 
 function subtitle(parts: (string | null | undefined)[]): string | undefined {
@@ -81,11 +88,17 @@ function subtitle(parts: (string | null | undefined)[]): string | undefined {
   return kept.length ? kept.join(" · ") : undefined;
 }
 
-function dateRange(start: string | null, end: string | null): string | undefined {
+function dateRange(tr: ReturnType<typeof useT>, start: string | null, end: string | null): string | undefined {
   if (start && end) return `${start} → ${end}`;
-  if (start) return `from ${start}`;
-  if (end) return `until ${end}`;
+  if (start) return tr("cash.fromDate", { date: start });
+  if (end) return tr("cash.untilDate", { date: end });
   return undefined;
+}
+
+/** A stored code (kind, nature, category, frequency) in the reader's words;
+    a code nothing has been named for is shown as stored rather than dropped. */
+function codeWord(prefix: string, c: string | null | undefined): string | null {
+  return c ? (tOpt(`${prefix}.${c}`) ?? c) : null;
 }
 
 export default function CashFlow({
@@ -111,6 +124,7 @@ export default function CashFlow({
   const [positions, setPositions] = useState<PortfolioRow[]>([]);
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [anchors, setAnchors] = useState<CashAnchor[]>([]);
+  const [taxonomy, setTaxonomy] = useState<TaxonomyRead | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Up here, not in the plan section: a save reloads this page, which draws
@@ -123,6 +137,7 @@ export default function CashFlow({
   const incomeRef = useRef<HTMLDivElement>(null);
   const expenseRef = useRef<HTMLDivElement>(null);
   const transferRef = useRef<HTMLDivElement>(null);
+  const tr = useT();
 
   useEffect(() => {
     void loadAll();
@@ -132,7 +147,7 @@ export default function CashFlow({
     setLoading(true);
     setError(null);
     try {
-      const [s, i, e, t, p, inst, pf, a] = await Promise.all([
+      const [s, i, e, t, p, inst, pf, a, tax] = await Promise.all([
         getCashFlowSummary(),
         getIncomeSources(),
         getExpenses(),
@@ -141,17 +156,24 @@ export default function CashFlow({
         getInstitutions(),
         getPortfolio(),
         getAllCashAnchors(),
+        getTaxonomy(),
       ]);
+      // Rows stored under an old code come in through its new name (the
+      // taxonomy's aliases): the boxes only ever offer today's words, so an
+      // edited row is saved under one and the store converges as it is read.
+      const alias = (c: string | null) =>
+        c ? (tax.aliases[c] ?? c) : c;
       setSummary(s);
-      setIncomes(i);
-      setExpenses(e);
+      setIncomes(i.map((x) => ({ ...x, category: alias(x.category) })));
+      setExpenses(e.map((x) => ({ ...x, category: alias(x.category) })));
       setTransfers(t);
       setPlans(p);
       setInstitutions(inst);
       setAnchors(a);
       setPositions(pf.rows);
+      setTaxonomy(tax);
     } catch (err) {
-      setError(apiError(err, "Could not reach the backend. Is it running on :8000?"));
+      setError(apiError(err, tr("cash.backendUnreachable")));
     } finally {
       setLoading(false);
     }
@@ -176,7 +198,7 @@ export default function CashFlow({
     onFocused();
   }, [focus, loading, onFocused]);
 
-  if (loading) return <p className="text-ink-soft">Loading…</p>;
+  if (loading) return <p className="text-ink-soft">{tr("common.loading")}</p>;
   if (error) return <p className="text-down">{error}</p>;
   // The base the reader chose, as the summary was computed in: what a new row
   // with no account to ask is proposed in.
@@ -191,34 +213,37 @@ export default function CashFlow({
       {summary && (
         <div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <StatCard label="Monthly income" value={money(summary.base_currency).format(summary.monthly_income)} valueClass="text-up" />
-            <StatCard label="Monthly expenses" value={money(summary.base_currency).format(summary.monthly_expenses)} valueClass="text-down" />
+            <StatCard label={tr("cash.monthlyIncome")} value={money(summary.base_currency).format(summary.monthly_income)} valueClass="text-up" />
+            <StatCard label={tr("cash.monthlyExpenses")} value={money(summary.base_currency).format(summary.monthly_expenses)} valueClass="text-down" />
             <StatCard
-              label="Monthly net"
+              label={tr("cash.monthlyNet")}
               value={money(summary.base_currency).format(summary.monthly_net)}
               valueClass={summary.monthly_net >= 0 ? "text-ink" : "text-down"}
             />
-            <StatCard label="Savings rate" value={pct(summary.savings_rate)} valueClass="text-olive" explain={SAVINGS_RATE} />
+            <StatCard label={tr("dashboard.savingsRate")} value={pct(tr, summary.savings_rate)} valueClass="text-olive" explain={savingsRate()} />
           </div>
           <p className="mt-3 text-sm text-ink-soft">
-            Income: active {money(summary.base_currency).format(summary.active_income)} · passive{" "}
-            {money(summary.base_currency).format(summary.passive_income)}. Expenses: essential{" "}
-            {money(summary.base_currency).format(summary.essential_expenses)} · discretionary{" "}
-            {money(summary.base_currency).format(summary.discretionary_expenses)}. {IN_FORCE}
+            {tr("cash.breakdown", {
+              active: money(summary.base_currency).format(summary.active_income),
+              passive: money(summary.base_currency).format(summary.passive_income),
+              essential: money(summary.base_currency).format(summary.essential_expenses),
+              discretionary: money(summary.base_currency).format(summary.discretionary_expenses),
+            })}
+            {inForceIntro()}
           </p>
           {(leftOut || undated) && (
             <p className="mt-1 text-sm text-ink-soft">
-              {[leftOut && `Not counted: ${leftOut} (marked below).`, undated].filter(Boolean).join(" ")}
+              {[leftOut && tr("cash.notCountedMarked", { what: leftOut }), undated].filter(Boolean).join(" ")}
             </p>
           )}
         </div>
       )}
 
       <div ref={incomeRef} className="scroll-mt-6">
-        <CashFlowSection spec={INCOME} items={incomes} summary={summary} institutions={institutions} anchors={anchors} base={base} instName={instName} onChanged={loadAll} />
+        <CashFlowSection spec={INCOME} items={incomes} summary={summary} institutions={institutions} anchors={anchors} base={base} categories={["", ...(taxonomy?.income ?? [])]} instName={instName} onChanged={loadAll} />
       </div>
       <div ref={expenseRef} className="scroll-mt-6">
-        <CashFlowSection spec={EXPENSE} items={expenses} summary={summary} institutions={institutions} anchors={anchors} base={base} instName={instName} onChanged={loadAll} />
+        <CashFlowSection spec={EXPENSE} items={expenses} summary={summary} institutions={institutions} anchors={anchors} base={base} categories={["", ...(taxonomy?.expense ?? [])]} instName={instName} onChanged={loadAll} />
       </div>
       <PlanSection
         items={plans}
@@ -238,6 +263,10 @@ export default function CashFlow({
       <div ref={transferRef} className="scroll-mt-6">
         <TransferSection items={transfers} institutions={institutions} anchors={anchors} base={base} instName={instName} onChanged={loadAll} />
       </div>
+      {/* The statement lane last: it is how most of these rows will arrive
+          now, and what it imports is movements — it changes no recurring
+          figure above, which is exactly why the reader can import freely. */}
+      <StatementImport institutions={institutions} onChanged={loadAll} />
     </div>
   );
 }
@@ -246,7 +275,7 @@ function InstitutionSelect({
   value,
   onChange,
   institutions,
-  placeholder = "institution…",
+  placeholder,
   required = false,
   title,
 }: {
@@ -263,6 +292,7 @@ function InstitutionSelect({
   required?: boolean;
   title?: string;
 }) {
+  const tr = useT();
   return (
     <select
       className={inputClass}
@@ -271,7 +301,7 @@ function InstitutionSelect({
       aria-required={required || undefined}
       onChange={(e) => onChange(e.target.value)}
     >
-      <option value="" disabled={required}>{placeholder}</option>
+      <option value="" disabled={required}>{placeholder ?? tr("cash.institutionBlank")}</option>
       {institutions.map((i) => (
         <option key={i.id} value={i.id}>{i.name}</option>
       ))}
@@ -334,19 +364,26 @@ type CashFlowBase = Omit<CashFlowRow, "id" | "notes">;
 type CashFlowSpec<T extends CashFlowRow, P> = {
   /** Which side of the summary's left-out lists a row of this kind is on. */
   side: "income" | "expense";
-  title: string;
-  hint: string;
+  /** The words, as catalogue keys: a module-level constant cannot bake in the
+      language that happened to be in force at import. */
+  titleKey: MessageKey;
+  hintKey: MessageKey;
   /** What a row of this kind cannot be saved without. */
   needs: Need[];
-  emptyText: string;
+  emptyKey: MessageKey;
   /** How the confirm dialog names one of these. */
-  noun: string;
+  deleteKey: MessageKey;
   /** The single field name the two sides disagree on — `kind` or `nature`.
       It labels its own select, so the placeholder never drifts from it. */
   tagField: string;
+  tagBlankKey: MessageKey;
   tagOptions: string[];
   tagOf: (item: T) => string | null;
-  categories: string[];
+  /** Where a tag code is named in the catalogue (`cash.kind.*`, `cash.nature.*`). */
+  tagPrefix: string;
+  /** Categories are NOT here: they come from the backend's taxonomy and are
+      handed to the section as a prop, because a copy typed beside the spec
+      drifted from the importer's vocabulary once already. */
   /** Put the tag back under its own name. The only place either side needs to
       know which name that is. */
   withTag: (base: CashFlowBase, tag: string | null) => P;
@@ -362,6 +399,7 @@ function CashFlowSection<T extends CashFlowRow, P>({
   institutions,
   anchors,
   base,
+  categories,
   instName,
   onChanged,
 }: {
@@ -376,9 +414,12 @@ function CashFlowSection<T extends CashFlowRow, P>({
       account's on the start date. */
   anchors: CashAnchor[];
   institutions: Institution[];
+  /** The category words, from the backend's taxonomy (blank first). */
+  categories: string[];
   instName: (id: number | null) => string | undefined;
   onChanged: () => Promise<void> | void;
 }) {
+  const tr = useT();
   /* What the currency box proposes while the reader has not typed one (the
      draft's `currency` stays "" until they do): the linked account's currency
      on the start date — its anchor in force then, or its first — and the
@@ -433,47 +474,47 @@ function CashFlowSection<T extends CashFlowRow, P>({
     create: spec.create,
     update: spec.update,
     destroy: spec.destroy,
-    confirmDelete: (i) => `Delete ${spec.noun} "${i.name}"?`,
+    confirmDelete: (i) => tr(spec.deleteKey, { name: i.name }),
     onChanged,
   });
 
   return (
-    <Section title={spec.title} hint={spec.hint} note={FIRST_PAYMENT_NOTE}>
+    <Section title={tr(spec.titleKey)} hint={tr(spec.hintKey)} note={firstPaymentNote()}>
       <form onSubmit={ed.submit} className="flex flex-wrap items-center gap-2">
-        <input className={inputClass} aria-label="Name" {...marks(spec.needs, "name")} value={ed.draft.name} onChange={(e) => ed.set("name")(e.target.value)} />
+        <input className={inputClass} aria-label={tr("cash.name")} {...marks(spec.needs, "name")} value={ed.draft.name} onChange={(e) => ed.set("name")(e.target.value)} />
         <select className={inputClass} value={ed.draft.tag} onChange={(e) => ed.set("tag")(e.target.value)}>
-          {spec.tagOptions.map((t) => (<option key={t} value={t}>{t || `${spec.tagField}…`}</option>))}
+          {spec.tagOptions.map((t) => (<option key={t} value={t}>{t ? (codeWord(spec.tagPrefix, t) ?? t) : tr(spec.tagBlankKey)}</option>))}
         </select>
         <select className={inputClass} value={ed.draft.category} onChange={(e) => ed.set("category")(e.target.value)}>
-          {spec.categories.map((c) => (<option key={c} value={c}>{c || "category…"}</option>))}
+          {categories.map((c) => (<option key={c} value={c}>{c ? (codeWord("cash.category", c) ?? c) : tr("cash.categoryBlank")}</option>))}
         </select>
-        <input className={inputClass + " w-28"} type="number" step="0.01" aria-label="Amount" {...marks(spec.needs, "amount")} value={ed.draft.amount} onChange={(e) => ed.set("amount")(e.target.value)} />
+        <input className={inputClass + " w-28"} type="number" step="0.01" aria-label={tr("cash.amount")} {...marks(spec.needs, "amount")} value={ed.draft.amount} onChange={(e) => ed.set("amount")(e.target.value)} />
         <input
           className={inputClass + " w-20"}
-          placeholder="currency"
+          placeholder={tr("cash.currency")}
           list={CURRENCY_LIST}
-          title="The currency the amount is in. Proposed from the institution's cash on the first payment's date; change it and it stays as you typed it."
+          title={tr("cash.flowCurrencyTitle")}
           value={ed.draft.currency || proposed(ed.draft)}
           onChange={(e) => ed.set("currency")(e.target.value)}
         />
         <select className={inputClass} value={ed.draft.frequency} onChange={(e) => ed.set("frequency")(e.target.value)}>
-          {FREQUENCIES.map((f) => (<option key={f} value={f}>{f || "frequency…"}</option>))}
+          {FREQUENCIES.map((f) => (<option key={f} value={f}>{f ? (codeWord("cash.frequency", f) ?? f) : tr("cash.frequencyBlank")}</option>))}
         </select>
         <InstitutionSelect value={ed.draft.institutionId} onChange={ed.set("institutionId")} institutions={institutions} />
         <DateField label={flowDateLabel(ed.draft.frequency)} value={ed.draft.startDate} onChange={ed.set("startDate")} />
-        <DateField label="end" value={ed.draft.endDate} onChange={ed.set("endDate")} />
+        <DateField label={tr("cash.end")} value={ed.draft.endDate} onChange={ed.set("endDate")} />
         <EditorButtons editing={ed.editing} submitting={ed.submitting} onCancel={ed.reset} />
       </form>
       {ed.error && <p className="text-down">{ed.error}</p>}
-      <RowsOrEmpty loading={false} error={null} empty={items.length === 0} emptyText={spec.emptyText}>
+      <RowsOrEmpty loading={false} error={null} empty={items.length === 0} emptyText={tr(spec.emptyKey)}>
         {items.map((i) => (
           <Row
             key={i.id}
             onEdit={() => ed.startEdit(i)}
             onDelete={() => void ed.destroy(i)}
             title={i.name}
-            badge={spec.tagOf(i)}
-            subtitle={subtitle([i.category, i.frequency, instName(i.institution_id), dateRange(i.start_date, i.end_date)])}
+            badge={codeWord(spec.tagPrefix, spec.tagOf(i))}
+            subtitle={subtitle([codeWord("cash.category", i.category), codeWord("cash.frequency", i.frequency), instName(i.institution_id), dateRange(tr, i.start_date, i.end_date)])}
             detail={summary ? leftOutLine(summary, spec.side, i.id) : undefined}
             note={i.notes}
             value={money(i.currency).format(i.amount)}
@@ -486,15 +527,16 @@ function CashFlowSection<T extends CashFlowRow, P>({
 
 const INCOME: CashFlowSpec<IncomeSource, IncomeSourceCreate> = {
   side: "income",
-  title: "Income",
-  hint: "Institution = where it's credited (its cash).",
+  titleKey: "dashboard.income",
+  hintKey: "cash.incomeHint",
   needs: INCOME_NEEDS,
-  emptyText: "No income yet.",
-  noun: "income",
+  emptyKey: "cash.noIncome",
+  deleteKey: "cash.deleteIncome",
   tagField: "kind",
+  tagBlankKey: "cash.kindBlank",
   tagOptions: KINDS,
   tagOf: (i) => i.kind,
-  categories: INCOME_CATEGORIES,
+  tagPrefix: "cash.kind",
   withTag: (base, tag) => ({ ...base, kind: tag }),
   create: createIncomeSource,
   update: updateIncomeSource,
@@ -503,15 +545,16 @@ const INCOME: CashFlowSpec<IncomeSource, IncomeSourceCreate> = {
 
 const EXPENSE: CashFlowSpec<Expense, ExpenseCreate> = {
   side: "expense",
-  title: "Expenses",
-  hint: "Institution = where it's paid from (its cash).",
+  titleKey: "dashboard.expenses",
+  hintKey: "cash.expenseHint",
   needs: EXPENSE_NEEDS,
-  emptyText: "No expenses yet.",
-  noun: "expense",
+  emptyKey: "cash.noExpenses",
+  deleteKey: "cash.deleteExpense",
   tagField: "nature",
+  tagBlankKey: "cash.natureBlank",
   tagOptions: NATURES,
   tagOf: (x) => x.nature,
-  categories: EXPENSE_CATEGORIES,
+  tagPrefix: "cash.nature",
   withTag: (base, tag) => ({ ...base, nature: tag }),
   create: createExpense,
   update: updateExpense,
@@ -541,6 +584,7 @@ function TransferSection({
   instName: (id: number | null) => string | undefined;
   onChanged: () => Promise<void> | void;
 }) {
+  const tr = useT();
   const [editId, setEditId] = useState<number | null>(null);
   const [date, setDate] = useState(todayISO());
   const [fromId, setFromId] = useState("");
@@ -550,7 +594,7 @@ function TransferSection({
      destination was credited in. Each is the reader's choice when they made
      one (null until then) and otherwise the proposal below. `arrived` is the
      credit itself when the reader has it from the destination's statement;
-     left blank across two currencies, the backend works it out at the ECB
+     left blank across two currencies, the backend works it out at the reference rate
      rate of the date and says which day. */
   const [currencyChoice, setCurrencyChoice] = useState<string | null>(null);
   const [toCurrencyChoice, setToCurrencyChoice] = useState<string | null>(null);
@@ -628,7 +672,7 @@ function TransferSection({
       reset();
       await onChanged();
     } catch (err) {
-      setError(apiError(err, "Save failed."));
+      setError(apiError(err, tr("common.saveFailed")));
     } finally {
       setSubmitting(false);
     }
@@ -638,9 +682,9 @@ function TransferSection({
     // With what it moves, in the words the chat's card says it with (brief
     // AP): each account's cash today and from which day.
     const question = await askBeforeDeleting(
-      "Delete this transfer?",
+      tr("cash.deleteTransfer"),
       () => transferDeletion(t.id),
-      (err) => apiError(err, "no answer came."),
+      (err) => apiError(err, tr("cash.noAnswer")),
     );
     if (!window.confirm(question)) return;
     setError(null);
@@ -649,26 +693,26 @@ function TransferSection({
       if (editId === t.id) reset();
       await onChanged();
     } catch (err) {
-      setError(apiError(err, "Delete failed."));
+      setError(apiError(err, tr("cash.deleteFailed")));
     }
   }
 
   return (
     <Section
-      title="Transfers"
-      hint="Move cash between two of your institutions on a date. It lowers the source's cash and raises the destination's. Between two currencies, what arrived is worked out at the ECB rate of that date unless you type it from the statement."
+      title={tr("cash.transfers")}
+      hint={tr("cash.transfersHint")}
     >
       <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
-        <DateField label="on" value={date} onChange={setDate} mark={marks(TRANSFER, "date")} />
-        <InstitutionSelect value={fromId} onChange={setFromId} institutions={institutions} placeholder="from (or external)…" />
+        <DateField label={tr("cash.on")} value={date} onChange={setDate} mark={marks(TRANSFER, "date")} />
+        <InstitutionSelect value={fromId} onChange={setFromId} institutions={institutions} placeholder={tr("cash.fromExternal")} />
         <span className="text-ink-faint">→</span>
-        <InstitutionSelect value={toId} onChange={setToId} institutions={institutions} placeholder="to (or external)…" />
-        <input className={inputClass + " w-28"} type="number" step="0.01" aria-label="Amount" {...marks(TRANSFER, "amount")} value={amount} onChange={(e) => setAmount(e.target.value)} />
+        <InstitutionSelect value={toId} onChange={setToId} institutions={institutions} placeholder={tr("cash.toExternal")} />
+        <input className={inputClass + " w-28"} type="number" step="0.01" aria-label={tr("cash.amount")} {...marks(TRANSFER, "amount")} value={amount} onChange={(e) => setAmount(e.target.value)} />
         <input
           className={inputClass + " w-20"}
-          placeholder="currency"
+          placeholder={tr("cash.currency")}
           list={CURRENCY_LIST}
-          title="The currency that left the source account"
+          title={tr("cash.fromCurrencyTitle")}
           {...marks(TRANSFER, "currency")}
           value={currency}
           onChange={(e) => setCurrencyChoice(e.target.value)}
@@ -676,9 +720,9 @@ function TransferSection({
         <span className="text-ink-faint">→</span>
         <input
           className={inputClass + " w-20"}
-          placeholder="currency"
+          placeholder={tr("cash.currency")}
           list={CURRENCY_LIST}
-          title="The currency the destination account was credited in"
+          title={tr("cash.toCurrencyTitle")}
           {...marks(TRANSFER, "toCurrency")}
           value={toCurrency}
           onChange={(e) => setToCurrencyChoice(e.target.value)}
@@ -689,32 +733,32 @@ function TransferSection({
             type="number"
             step="any"
             min="0"
-            placeholder={`Arrived in ${toCurrency || "…"}`}
-            title="What the destination was actually credited, from its statement. Leave it blank and it is worked out at the ECB rate of the date. Your bank's rate will differ a little."
+            placeholder={tr("cash.arrivedIn", { currency: toCurrency || "…" })}
+            title={tr("cash.arrivedTitle")}
             value={arrived}
             onChange={(e) => setArrived(e.target.value)}
           />
         )}
-        <button className={btnClass} disabled={submitting}>{submitting ? "..." : editId != null ? "Save" : "Add"}</button>
+        <button className={btnClass} disabled={submitting}>{submitting ? "..." : editId != null ? tr("common.save") : tr("common.add")}</button>
         {editId != null && (
           <button type="button" onClick={reset} className="rounded-sm px-3 py-2 text-sm text-ink-soft hover:text-ink">
-            Cancel
+            {tr("common.cancel")}
           </button>
         )}
       </form>
       {error && <p className="text-down">{error}</p>}
-      <RowsOrEmpty loading={false} error={null} empty={items.length === 0} emptyText="No transfers yet.">
+      <RowsOrEmpty loading={false} error={null} empty={items.length === 0} emptyText={tr("cash.noTransfers")}>
         {items.map((t) => (
           <Row
             key={t.id}
             onEdit={() => startEdit(t)}
             onDelete={() => remove(t)}
-            title={`${instName(t.from_institution_id) ?? "External"} → ${instName(t.to_institution_id) ?? "External"}`}
+            title={`${instName(t.from_institution_id) ?? tr("cash.external")} → ${instName(t.to_institution_id) ?? tr("cash.external")}`}
             subtitle={[
               t.date,
               // A credit fixed at one day's rate says which day, so it can be
               // held against the statement.
-              t.fx_as_of ? `at the ECB rate of ${t.fx_as_of}` : null,
+              t.fx_as_of ? tr("cash.atEcbRate", { date: t.fx_as_of }) : null,
             ]
               .filter(Boolean)
               .join(" · ")}
@@ -785,6 +829,7 @@ function PlanSection({
   saved: PlanSaved | null;
   onSaved: (s: PlanSaved | null) => void;
 }) {
+  const tr = useT();
   const [editId, setEditId] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
@@ -977,7 +1022,9 @@ function PlanSection({
     // above once the plain fields are in.
     if (homeless.length > 0) {
       setError(
-        `Say where ${homeless.map((t) => t.symbol.trim().toUpperCase() || "it").join(", ")} will be held. A position held nowhere is one no situation can photograph and no sale can settle.`,
+        tr("cash.sayWhereHeld", {
+          names: homeless.map((t) => t.symbol.trim().toUpperCase() || tr("cash.it")).join(", "),
+        }),
       );
       return;
     }
@@ -1012,21 +1059,21 @@ function PlanSection({
       reset();
       await onChanged();
     } catch (err) {
-      setError(apiError(err, "Save failed."));
+      setError(apiError(err, tr("common.saveFailed")));
     } finally {
       setSubmitting(false);
     }
   }
 
   async function remove(p: AccumulationPlan) {
-    if (!window.confirm(`Delete plan "${p.name}"?`)) return;
+    if (!window.confirm(tr("cash.deletePlan", { name: p.name }))) return;
     setError(null);
     try {
       await deleteAccumulationPlan(p.id);
       if (editId === p.id) reset();
       await onChanged();
     } catch (err) {
-      setError(apiError(err, "Delete failed."));
+      setError(apiError(err, tr("cash.deleteFailed")));
     }
   }
 
@@ -1042,12 +1089,15 @@ function PlanSection({
               : t.asset_name || t.symbol,
           )
           .join(" + ")
-      : "nothing yet";
+      : tr("cash.nothingYet");
     const insts = [...new Set(p.targets.map((t) => instName(t.institution_id)).filter(Boolean))];
     return subtitle([
-      `from ${instName(p.source_institution_id) ?? "cash"} → ${tgt}`,
+      tr("cash.planFrom", {
+        source: instName(p.source_institution_id) ?? tr("cash.fromCash"),
+        targets: tgt,
+      }),
       insts.join(", ") || undefined,
-      dateRange(p.start_date, p.end_date),
+      dateRange(tr, p.start_date, p.end_date),
     ]);
   }
 
@@ -1066,54 +1116,54 @@ function PlanSection({
     const amount = money(p.currency, "cents").format(p.carried_remainder);
     const ended = p.end_date != null && p.end_date < todayISO();
     return ended
-      ? `${amount} set aside and never invested: this plan has ended`
-      : `${amount} set aside, waiting for the next contribution`;
+      ? tr("cash.setAsideEnded", { amount })
+      : tr("cash.setAsideWaiting", { amount });
   }
 
   return (
     <Section
       title="PAC"
-      hint="Recurring buys: how much moves, into what, how often."
-      note={PLAN_NOTE}
+      hint={tr("cash.pacHint")}
+      note={planNote()}
       explain={{
-        question: "How does a PAC work?",
-        text: "A plan names both ends (the account each contribution leaves, and where each investment is held), because money moves from one to the other and a plan that says neither is describing a purchase nobody made. With several targets the budget is spent as one pot, so a whole-unit broker leaves one small remainder instead of one per fund, and it carries to the next contribution.",
+        question: tr("cash.pacQuestion"),
+        text: tr("cash.pacExplain"),
       }}
     >
       <form onSubmit={submit} className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <input className={inputClass} aria-label="Plan name" {...marks(PLAN, "name")} value={name} onChange={(e) => setName(e.target.value)} />
-          <input className={inputClass + " w-28"} type="number" step="0.01" aria-label="Budget" {...marks(PLAN, "amount")} title="Total contributed per occurrence, split across the targets below" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <input className={inputClass} aria-label={tr("cash.planName")} {...marks(PLAN, "name")} value={name} onChange={(e) => setName(e.target.value)} />
+          <input className={inputClass + " w-28"} type="number" step="0.01" aria-label={tr("cash.budget")} {...marks(PLAN, "amount")} title={tr("cash.budgetTitle")} value={amount} onChange={(e) => setAmount(e.target.value)} />
           <input
             className={inputClass + " w-20"}
-            placeholder="currency"
+            placeholder={tr("cash.currency")}
             list={CURRENCY_LIST}
-            title="The currency the contribution is paid in: the source account's cash. Proposed from that account on the first buy's date; change it and it stays as you typed it."
+            title={tr("cash.planCurrencyTitle")}
             value={currency}
             onChange={(e) => setCurrencyChoice(e.target.value)}
           />
           <select className={inputClass} value={frequency} onChange={(e) => setFrequency(e.target.value)}>
-            {PAC_FREQUENCIES.map((f) => (<option key={f} value={f}>{f}</option>))}
+            {PAC_FREQUENCIES.map((f) => (<option key={f} value={f}>{codeWord("cash.frequency", f) ?? f}</option>))}
           </select>
           <select
             className={inputClass}
             value={execution}
             onChange={(e) => setExecution(e.target.value)}
-            title="How your broker fills the order: whole units only (the remainder stays in cash), or exact fractional amounts, spending the contribution to the cent. Check which one yours does; it changes what a contribution buys."
+            title={tr("cash.executionTitle")}
           >
-            <option value="whole_units">whole units</option>
-            <option value="fractional">fractional</option>
+            <option value="whole_units">{tr("cash.wholeUnits")}</option>
+            <option value="fractional">{tr("cash.fractional")}</option>
           </select>
           <InstitutionSelect
             value={sourceId}
             onChange={pickSource}
             institutions={institutions}
-            placeholder="Which account funds it?"
+            placeholder={tr("cash.whichAccountFunds")}
             required
-            title="The account each contribution is taken from. Required: a plan that does not say where the money comes from cannot take it from anywhere, and its buys spend money no account ever loses."
+            title={tr("cash.sourceTitle")}
           />
-          <DateField label={PLAN_DATE_LABEL} value={startDate} onChange={setStartDate} />
-          <DateField label="end" value={endDate} onChange={setEndDate} />
+          <DateField label={planDateLabel()} value={startDate} onChange={setStartDate} />
+          <DateField label={tr("cash.end")} value={endDate} onChange={setEndDate} />
         </div>
 
         {/* In view, under the date that causes it: a consequence, which a "?"
@@ -1151,26 +1201,26 @@ function PlanSection({
                 value={t.name}
                 onChange={(v) => patchTarget(t.key, { name: v })}
                 owned={ownedForPicker}
-                placeholder="Buy what? Type to search"
+                placeholder={tr("cash.buyWhat")}
                 onPick={(c) => applyPick(t.key, c)}
               />
-              <input className={inputClass + " w-32"} aria-label="Ticker" placeholder="Ticker" {...(i === 0 ? marks(PLAN, "ticker") : {})} title="Yahoo ticker with exchange suffix (e.g. VWCE.MI). A listing in another currency is bought at its close converted into the plan's currency, at the ECB rate of that day" value={t.symbol} onChange={(e) => patchTarget(t.key, { symbol: e.target.value })} />
-              <input className={inputClass + " w-36"} placeholder="ISIN (optional)" value={t.isin} onChange={(e) => patchTarget(t.key, { isin: e.target.value })} />
+              <input className={inputClass + " w-32"} aria-label={tr("cash.ticker")} placeholder={tr("cash.ticker")} {...(i === 0 ? marks(PLAN, "ticker") : {})} title={tr("cash.tickerTitle")} value={t.symbol} onChange={(e) => patchTarget(t.key, { symbol: e.target.value })} />
+              <input className={inputClass + " w-36"} placeholder={tr("wealth.isinOptional")} value={t.isin} onChange={(e) => patchTarget(t.key, { isin: e.target.value })} />
               <InstitutionSelect
                 value={t.institutionId}
                 onChange={(v) => patchTarget(t.key, { institutionId: v })}
                 institutions={institutions}
-                placeholder="Where is it held?"
+                placeholder={tr("cash.whereHeld")}
                 required
-                title="Where this investment will be held. Required: a position held at no institution is one no situation can photograph and no sale can settle. Pre-filled from the account funding the plan: change it if you buy this one somewhere else."
+                title={tr("cash.whereHeldTitle")}
               />
               <input
                 className={inputClass + " w-20"}
                 type="number"
                 step="0.1"
                 min="0"
-                placeholder="share"
-                title="Relative share of the budget: 1/1/1 and 40/30/30 mean the same thing"
+                placeholder={tr("cash.share")}
+                title={tr("cash.shareTitle")}
                 value={t.weight}
                 onChange={(e) => patchTarget(t.key, { weight: e.target.value })}
               />
@@ -1182,7 +1232,7 @@ function PlanSection({
                   type="button"
                   onClick={() => setTargets((ts) => ts.filter((x) => x.key !== t.key))}
                   className="rounded-sm px-2 py-1 text-sm text-ink-faint hover:text-down"
-                  title="Remove this target"
+                  title={tr("cash.removeTarget")}
                 >
                   ×
                 </button>
@@ -1195,11 +1245,14 @@ function PlanSection({
               onClick={() => setTargets((ts) => [...ts, emptyTarget(sourceId)])}
               className="rounded-sm text-sm text-olive hover:underline"
             >
-              + add another investment
+              {tr("cash.addAnother")}
             </button>
             {filled.length > 1 && amount && (
               <span className="text-xs text-ink-faint">
-                {money(currency).format(Number(amount))} split {filled.map((t) => `${share(t)}%`).join(" / ")}
+                {tr("cash.split", {
+                  amount: money(currency).format(Number(amount)),
+                  shares: filled.map((t) => `${share(t)}%`).join(" / "),
+                })}
               </span>
             )}
           </div>
@@ -1207,11 +1260,11 @@ function PlanSection({
 
         <div className="flex items-center gap-2">
           <button className={btnClass} disabled={submitting}>
-            {submitting ? "..." : editId != null ? "Save" : "Add"}
+            {submitting ? "..." : editId != null ? tr("common.save") : tr("common.add")}
           </button>
           {editId != null && (
             <button type="button" onClick={reset} className="rounded-sm px-3 py-2 text-sm text-ink-soft hover:text-ink">
-              Cancel
+              {tr("common.cancel")}
             </button>
           )}
         </div>
@@ -1224,7 +1277,7 @@ function PlanSection({
             <span key={i.id}>
               {n > 0 && " · "}
               <button type="button" onClick={() => onOpenAccount(i)} className="text-olive underline-offset-2 hover:underline">
-                Open {i.name}
+                {tr("cash.openAccount", { name: i.name })}
               </button>
             </span>
           ))}
@@ -1233,14 +1286,24 @@ function PlanSection({
       {unknown.length > 0 && (
         <p
           className="border-l-2 border-warn bg-warn-tint px-3 py-2 text-xs text-warn"
-          title="Executions are matched to positions by exact ticker, so a different spelling silently starts a SECOND position for the same fund instead of adding to the one you hold. If you are starting a new plan on something you do not own yet, this is expected: the first execution creates it."
+          title={tr("cash.noMatchesTitle")}
         >
-          <b>{unknown.map((t) => t.symbol.trim().toUpperCase()).join(", ")}</b> matches no
-          position you hold: fine for a new plan, but a typo starts a second position
-          instead of adding to yours.
+          {tr
+            .rich("cash.noMatches", {
+              names: unknown.map((t) => t.symbol.trim().toUpperCase()).join(", "),
+            })
+            .map((p, i) =>
+              p.kind === "strong" ? (
+                <strong key={i}>{p.value}</strong>
+              ) : p.kind === "em" ? (
+                <em key={i}>{p.value}</em>
+              ) : (
+                <span key={i}>{p.value}</span>
+              ),
+            )}
         </p>
       )}
-      <RowsOrEmpty loading={false} error={null} empty={items.length === 0} emptyText="No PACs yet.">
+      <RowsOrEmpty loading={false} error={null} empty={items.length === 0} emptyText={tr("cash.noPlans")}>
         {items.map((p) => (
           <Row
             key={p.id}

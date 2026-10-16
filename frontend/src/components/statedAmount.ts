@@ -49,7 +49,7 @@ export type Entry = {
   amount: number;
   currency: string;
   price_currency: string | null;
-  /** The ECB day the app worked `amount` out at, null when it did not. */
+  /** The reference-rate day the app worked `amount` out at, null when it did not. */
   fx_as_of: string | null;
 };
 

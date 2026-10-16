@@ -15,7 +15,9 @@ import {
 import { getBaseCurrency, saveBaseCurrency, type BaseCurrencySetting } from "../api/baseCurrency";
 import { choicesOf, isVisible, topicsOf, unshownAnswer } from "./questionnaire";
 import { askedAs, othersOf, toSave } from "./profileAnswers";
+import { explainWords, optionWords, questionWords, topicWords } from "./surveyText";
 import { apiError, btnClass, cardClass, inputClass } from "./ui";
+import { useT } from "../i18n/index.ts";
 
 /* The questions are the backend's (`GET /api/survey/questions`, app/questionnaire.py):
    the chat's answers to them are checked against the same list, so the two
@@ -27,6 +29,7 @@ import { apiError, btnClass, cardClass, inputClass } from "./ui";
    you and a form cannot ask that in advance. */
 
 export default function Profile() {
+  const tr = useT();
   const [questions, setQuestions] = useState<SurveyQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   /* Answers stored under keys this form does not ask, posted back with every
@@ -51,6 +54,13 @@ export default function Profile() {
   const [taxCountry, setTaxCountry] = useState("");
   const [cgRate, setCgRate] = useState("");
   const [divRate, setDivRate] = useState("");
+  /* The declared dividend schedule (China's 20%/10%/免征 by holding period),
+     adopted from a shipped default by pressing it: one box cannot hold three
+     numbers, so the schedule travels as data. A flat rate typed beside it
+     still wins, which is why the two live together happily. */
+  const [divTiers, setDivTiers] = useState<NonNullable<TaxSettingsRead["dividend_tiers"]> | null>(
+    null,
+  );
   /* The base, as stored and as picked. Saved with the same button, for the
      reason written above; sent only when it changed, because changing it is
      the one save here that asks the rate feed for something. */
@@ -82,13 +92,14 @@ export default function Profile() {
       setTaxCountry(taxes.country ?? "");
       setCgRate(taxes.capital_gains_rate?.toString() ?? "");
       setDivRate(taxes.dividend_withholding_rate?.toString() ?? "");
+      setDivTiers(taxes.dividend_tiers ?? null);
       const map: Record<string, string> = {};
       for (const a of existing) if (a.answer != null) map[a.question_key] = a.answer;
       setAnswers(map);
       setCarried(othersOf(asked, existing));
       setDropped([]);
     } catch (err) {
-      setError(apiError(err, "Could not reach the backend. Is it running on :8000?"));
+      setError(apiError(err, tr("common.backendDown")));
     } finally {
       setLoading(false);
     }
@@ -115,6 +126,7 @@ export default function Profile() {
           country: taxCountry.trim() || null,
           capital_gains_rate: cgRate === "" ? null : Number(cgRate),
           dividend_withholding_rate: divRate === "" ? null : Number(divRate),
+          dividend_tiers: divTiers,
         }),
       );
       // Last, so a feed that does not answer leaves everything above saved and
@@ -124,23 +136,19 @@ export default function Profile() {
       }
       setSaved(true);
     } catch (err) {
-      setError(apiError(err, "Save failed."));
+      setError(apiError(err, tr("common.saveFailed")));
     } finally {
       setSaving(false);
     }
   }
 
-  if (loading) return <p className="text-ink-soft">Loading…</p>;
+  if (loading) return <p className="text-ink-soft">{tr("common.loading")}</p>;
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-ink">Profile &amp; goals</h2>
-        <p className="text-sm text-ink-soft">
-          A short questionnaire that gives Aurelio your context. Saved on your
-          machine; sent to the AI model through OpenRouter when you run an
-          analysis or ask the chat.
-        </p>
+        <h2 className="text-lg font-semibold text-ink">{tr("profile.title")}</h2>
+        <p className="text-sm text-ink-soft">{tr("profile.intro")}</p>
       </div>
 
       {error && <p className="text-down">{error}</p>}
@@ -150,7 +158,7 @@ export default function Profile() {
         if (qs.length === 0) return null;
         return (
           <section key={topic} className={cardClass + " space-y-4 p-5"}>
-            <h3 className="text-sm font-semibold text-ink">{topic}</h3>
+            <h3 className="text-sm font-semibold text-ink">{topicWords(topic)}</h3>
             {qs.map((q) => (
               <QuestionField
                 key={q.key}
@@ -197,7 +205,11 @@ export default function Profile() {
         onUseDefault={(d) => {
           setSaved(false);
           setCgRate(d.capital_gains_rate.toString());
-          setDivRate(d.dividend_withholding_rate.toString());
+          // A country whose dividend rate is not one number (China's schedule)
+          // ships none — its box comes back EMPTY, and the schedule beside it
+          // is what the estimate will use.
+          setDivRate(d.dividend_withholding_rate?.toString() ?? "");
+          setDivTiers(d.dividend_tiers ?? null);
         }}
       />
 
@@ -213,9 +225,9 @@ export default function Profile() {
 
       <div className="flex items-center gap-3">
         <button onClick={save} disabled={saving} className={btnClass}>
-          {saving ? "Saving…" : "Save profile"}
+          {saving ? tr("profile.saving") : tr("profile.save")}
         </button>
-        {saved && <span className="text-sm text-up">Saved ✓</span>}
+        {saved && <span className="text-sm text-up">{tr("profile.saved")}</span>}
       </div>
     </div>
   );
@@ -241,21 +253,19 @@ function OtherAnswers({
   onDelete: (key: string) => void;
   onRestore: (key: string) => void;
 }) {
+  const tr = useT();
   if (answers.length === 0 && dropped.length === 0) return null;
   return (
     <section className={cardClass + " space-y-4 p-5"}>
       <div>
-        <h3 className="text-sm font-semibold text-ink">Other answers</h3>
-        <p className="mt-1 text-sm text-ink-soft">
-          Answers to questions this form does not ask, recorded in the chat. The chat and
-          the analyses read them like the rest: change one or delete it here, then save.
-        </p>
+        <h3 className="text-sm font-semibold text-ink">{tr("profile.otherTitle")}</h3>
+        <p className="mt-1 text-sm text-ink-soft">{tr("profile.otherIntro")}</p>
       </div>
       {answers.map((a) => (
         <div key={a.question_key} className="space-y-1">
           <label className="block text-sm text-ink" htmlFor={`other-${a.question_key}`}>
             {askedAs(a)}
-            {a.topic && <span className="ml-2 text-xs text-ink-faint">{a.topic}</span>}
+            {a.topic && <span className="ml-2 text-xs text-ink-faint">{topicWords(a.topic)}</span>}
           </label>
           <div className="flex items-start gap-2">
             <textarea
@@ -269,14 +279,14 @@ function OtherAnswers({
               onClick={() => onDelete(a.question_key)}
               className="shrink-0 rounded-sm px-3 py-2 text-sm text-ink-soft transition hover:text-down"
             >
-              Delete
+              {tr("common.delete")}
             </button>
           </div>
         </div>
       ))}
       {dropped.length > 0 && (
         <div className="text-xs text-warn">
-          <p>Deleted when you save:</p>
+          <p>{tr("profile.deletedWhenSave")}</p>
           <ul className="mt-1 space-y-1">
             {dropped.map((a) => (
               <li key={a.question_key}>
@@ -286,7 +296,7 @@ function OtherAnswers({
                   onClick={() => onRestore(a.question_key)}
                   className="text-olive underline-offset-2 hover:underline"
                 >
-                  Keep it
+                  {tr("profile.keepIt")}
                 </button>
               </li>
             ))}
@@ -301,10 +311,10 @@ function OtherAnswers({
 
    What the reader has to know before changing it is what moves and what does
    not. Every total moves — the net worth, the history, every converted figure —
-   because it is the same wealth measured in another unit, at the ECB rate of
+   because it is the same wealth measured in another unit, at the reference rate of
    each figure's own day. Nothing recorded moves: an amount keeps the currency
    it was typed in, and a sum fixed on its day stays what it was. The choices
-   are the currencies the ECB publishes, because a total can only be converted
+   are the currencies the feed publishes, because a total can only be converted
    into one somebody publishes a rate for. */
 function BaseCurrencySection({
   current,
@@ -317,19 +327,13 @@ function BaseCurrencySection({
   picked: string;
   onPick: (code: string) => void;
 }) {
+  const tr = useT();
   return (
     <section className={cardClass + " space-y-3 p-5"}>
-      <h3 className="text-sm font-semibold text-ink">Base currency</h3>
-      <p className="text-sm text-ink-soft">
-        Every total is shown in this currency: your net worth, its history, every
-        converted figure. Changing it moves all of them, the history included:
-        it is the same wealth in another unit, converted at the ECB rate of each
-        figure's own day. Nothing you recorded is rewritten: every amount keeps
-        the currency you typed it in, and a debit or a transfer fixed on its day
-        stays what it was.
-      </p>
+      <h3 className="text-sm font-semibold text-ink">{tr("profile.baseTitle")}</h3>
+      <p className="text-sm text-ink-soft">{tr("profile.baseHelp")}</p>
       <label className="flex items-center gap-2 text-sm text-ink">
-        Show totals in
+        {tr("profile.baseShowIn")}
         <select
           className={inputClass + " w-28"}
           value={picked}
@@ -344,13 +348,12 @@ function BaseCurrencySection({
       </label>
       {picked !== current && (
         <p className="text-xs text-warn">
-          Saving switches every total from {current} to {picked}. The rates against{" "}
-          {picked} are fetched first; if the feed cannot be reached, nothing changes.
+          {tr("profile.baseSwitch", { current, picked })}
         </p>
       )}
       {available.length <= 1 && (
         <p className="text-xs text-ink-faint">
-          The rate feed has not answered yet, so {current} is the only currency on offer.
+          {tr("profile.baseOnlyOne", { current })}
         </p>
       )}
     </section>
@@ -388,6 +391,7 @@ function TaxSection({
   onChange: (field: "country" | "cg" | "div", value: string) => void;
   onUseDefault: (d: TaxCountryDefault) => void;
 }) {
+  const tr = useT();
   const match = known.find(
     (d) => d.country.toLowerCase() === country.trim().toLowerCase(),
   );
@@ -396,25 +400,19 @@ function TaxSection({
   return (
     <section className={cardClass + " space-y-4 p-5"}>
       <div>
-        <h3 className="text-sm font-semibold text-ink">Tax</h3>
-        <p className="mt-1 text-sm text-ink-soft">
-          Your own rates, used for an estimate shown beside your portfolio
-          figures. Aurelio never puts a tax inside a total: not your net worth,
-          not your book value. Leave a field empty if you do not know it: that
-          is different from writing 0, and the estimate will say which half it
-          could not work out.
-        </p>
+        <h3 className="text-sm font-semibold text-ink">{tr("profile.taxTitle")}</h3>
+        <p className="mt-1 text-sm text-ink-soft">{tr("profile.taxHelp")}</p>
       </div>
 
       <div>
         <label className="mb-1 block text-sm text-ink">
-          Which country do you pay investment tax in?
+          {tr("profile.taxCountryLabel")}
         </label>
         <input
           className={inputClass + " w-full"}
           type="text"
           list="tax-countries"
-          placeholder="Any country (typing your own rates below works either way)"
+          placeholder={tr("profile.taxCountryPlaceholder")}
           value={country}
           onChange={(e) => onChange("country", e.target.value)}
         />
@@ -428,8 +426,12 @@ function TaxSection({
       {match && (
         <div className="rounded-sm bg-tint p-3 text-sm">
           <p className="text-ink">
-            {match.country}: {match.regime} ({match.capital_gains_rate}% on
-            gains, {match.dividend_withholding_rate}% on dividends).
+            {tr("profile.taxMatch", {
+              country: match.country,
+              regime: match.regime,
+              cg: match.capital_gains_rate,
+              div: match.dividend_withholding_rate,
+            })}
           </p>
           {/* Offered, never applied on its own. A figure that changed itself
               because a text field changed is a figure nobody declared, and the
@@ -440,31 +442,28 @@ function TaxSection({
             onClick={() => onUseDefault(match)}
             className="mt-2 rounded-sm border border-olive px-3 py-1.5 text-sm text-olive-deep transition hover:bg-olive-tint"
           >
-            Use these as a starting point
+            {tr("profile.taxUseThese")}
           </button>
         </div>
       )}
 
       <div className="flex flex-wrap gap-6">
         <RateField
-          label="Capital gains rate"
-          hint="Applied to the gains your sells locked in"
+          label={tr("profile.taxCgLabel")}
+          hint={tr("profile.taxCgHint")}
           value={capitalGains}
           onChange={(v) => onChange("cg", v)}
         />
         <RateField
-          label="Dividend withholding rate"
-          hint="Applied only to dividends still showing the market's gross figure"
+          label={tr("profile.taxDivLabel")}
+          hint={tr("profile.taxDivHint")}
           value={dividends}
           onChange={(v) => onChange("div", v)}
         />
       </div>
 
       {nothingSet && (
-        <p className="text-sm text-ink-faint">
-          Nothing set, so no tax estimate is shown anywhere: not a zero, and
-          not a silent omission. The portfolio page says what it is missing.
-        </p>
+        <p className="text-sm text-ink-faint">{tr("profile.taxNothingSet")}</p>
       )}
     </section>
   );
@@ -481,6 +480,7 @@ function RateField({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const tr = useT();
   return (
     <div>
       <label className="mb-1 block text-sm text-ink">{label}</label>
@@ -491,7 +491,7 @@ function RateField({
           min={0}
           max={100}
           step="0.001"
-          placeholder="not set"
+          placeholder={tr("profile.rateNotSet")}
           value={value}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -511,12 +511,15 @@ function QuestionField({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const tr = useT();
   // An answer on record that no button, option or number box can show: written
   // before the chat's answers were checked against the question (brief AL).
   const unshown = unshownAnswer(q, value);
+  // The label and the buttons say the words in this language; `onChange` still
+  // receives the English the backend sent and the store compares against.
   return (
     <div>
-      <label className="mb-1 block text-sm text-ink">{q.text}</label>
+      <label className="mb-1 block text-sm text-ink">{questionWords(q)}</label>
 
       {q.type === "boolean" ? (
         <div className="flex gap-2">
@@ -532,16 +535,16 @@ function QuestionField({
                   : "border-rule text-ink-soft hover:bg-ground")
               }
             >
-              {opt}
+              {optionWords(opt)}
             </button>
           ))}
         </div>
       ) : q.type === "single" ? (
         <select className={inputClass} value={value} onChange={(e) => onChange(e.target.value)}>
-          <option value="">choose…</option>
+          <option value="">{tr("profile.choose")}</option>
           {q.options.map((o) => (
             <option key={o} value={o}>
-              {o}
+              {optionWords(o)}
             </option>
           ))}
         </select>
@@ -572,7 +575,7 @@ function QuestionField({
 
       {q.explain_when && value === q.explain_when.equals && (
         <p className="mt-2 rounded-sm bg-warn-tint p-3 text-sm text-warn">
-          {q.explain_when.text}
+          {explainWords(q)}
         </p>
       )}
     </div>

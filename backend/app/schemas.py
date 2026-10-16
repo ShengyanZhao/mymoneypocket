@@ -87,7 +87,7 @@ def _must_be_a_currency_code(code: str) -> str:
       at a rate of 1.25 (measured; audit T measured 3,871.00 at the real rate),
       because an amount that cannot be converted is added AS STORED — so each
       invented code contributed its full 1,000.00.
-    * `TWD` is a real currency the ECB does not quote, and a Taipei-listed fund
+    * `TWD` is a real currency the feed does not quote, and a Taipei-listed fund
       is a legitimate holding, so validating against `fx.feed_currencies` would
       refuse something the reader owns. `GBp` is the same case for the same
       reason. That is why the shape is all that is checked here, and why the
@@ -253,7 +253,7 @@ class SnapshotRead(SnapshotBase):
         ...,
         description=(
             "What this situation was worth, in `base_currency`: its holdings "
-            "converted at the ECB rate, by the listing currency where the ticker "
+            "converted at the feed rate, by the listing currency where the ticker "
             "has one. Computed by the router, never by the model."
         ),
     )
@@ -349,7 +349,7 @@ class HoldingRead(HoldingBase):
     value_base: float = Field(
         ...,
         description=(
-            "`value` in `base_currency`, at the ECB rate — by the ticker's "
+            "`value` in `base_currency`, at the feed rate — by the ticker's "
             "listing currency where it has one, by `currency` otherwise. The "
             "figure to display and to total; `value` is the one to edit."
         ),
@@ -538,7 +538,7 @@ class UnconvertedAmount(BaseModel):
     as wrong as one quietly inflated (`fx.Converter.to_base_or_as_stored`). What
     was missing is this — the saying so. Two cases reach it and the reader tells
     them apart at a glance, which is why the code is printed as typed: a code
-    that is a typo (`Doll`) is corrected on the row, and a real currency the ECB
+    that is a typo (`Doll`) is corrected on the row, and a real currency the feed
     does not quote (`TWD`) cannot be converted by anybody and the figure simply
     is in another unit."""
 
@@ -671,7 +671,7 @@ class NetWorthPoint(BaseModel):
     fx_as_of: str | None = Field(
         ...,
         description=(
-            "The ECB day whose rates converted this point — the latest published "
+            "The reference-rate day whose rates converted this point — the latest published "
             "on or before `date`. Null when nothing in the point needed converting."
         ),
     )
@@ -762,6 +762,15 @@ class TaxEstimate(BaseModel):
         ...,
         description="dividends_gross_estimated x the rate. Null when no rate is set.",
     )
+    dividends_by_rate: list[DividendTaxed] = Field(
+        default_factory=list,
+        description=(
+            "What a DECLARED SCHEDULE applied, tier by tier: the same gross "
+            "base as `dividends_gross_estimated`, sorted by rate. Empty when no "
+            "schedule was applied (none declared, or a flat rate typed beside "
+            "one, which wins)."
+        ),
+    )
     total: float | None = Field(
         ...,
         description=(
@@ -785,6 +794,22 @@ class TaxEstimate(BaseModel):
     )
 
 
+class DividendTier(BaseModel):
+    """One step of a declared dividend schedule (the amendment at the top of
+    app/tax.py): a holding age's cap, inclusive, and the rate PERCENT for
+    shares held up to it. The last step's cap is null — beyond every cap."""
+
+    days_max: int | None = Field(default=None, ge=0)
+    rate: float = Field(..., ge=0, le=100)
+
+
+class DividendTaxed(BaseModel):
+    """What one tier's rate was applied to, in `TaxEstimate.dividends_by_rate`."""
+
+    rate: float = Field(..., description="PERCENT, not a fraction")
+    amount: float = Field(..., ge=0, description="The gross dividend base that fell in this tier")
+
+
 class TaxSettings(BaseModel):
     """The three settings the reader controls, as they are written and read.
 
@@ -796,6 +821,14 @@ class TaxSettings(BaseModel):
     )
     capital_gains_rate: float | None = Field(default=None, ge=0, le=100)
     dividend_withholding_rate: float | None = Field(default=None, ge=0, le=100)
+    dividend_tiers: list[DividendTier] | None = Field(
+        default=None,
+        description=(
+            "A declared dividend schedule, for a country whose dividend rate is "
+            "a function of the holding period (China's 20%/10%/免征). A flat "
+            "dividend rate typed beside it wins; null clears it."
+        ),
+    )
 
 
 class TaxCountryDefault(BaseModel):
@@ -806,7 +839,13 @@ class TaxCountryDefault(BaseModel):
 
     country: str
     capital_gains_rate: float
-    dividend_withholding_rate: float
+    # Null where the country's dividend rate is not ONE number: China ships its
+    # schedule in `dividend_tiers` instead, and one box cannot hold it.
+    dividend_withholding_rate: float | None
+    dividend_tiers: list[DividendTier] | None = Field(
+        default=None,
+        description="The schedule, for a country whose dividend rate is not one number",
+    )
     regime: str = Field(..., description="The named regime the rate comes from")
     omits: str = Field(
         ...,
@@ -825,7 +864,7 @@ class BaseCurrencySetting(BaseModel):
         ...,
         min_length=3,
         max_length=3,
-        description="An ISO code the ECB reference-rate feed quotes, e.g. EUR, USD",
+        description="An ISO code the feed reference-rate feed quotes, e.g. EUR, USD",
     )
 
 
@@ -837,7 +876,7 @@ class BaseCurrencySettingRead(BaseCurrencySetting):
     available: list[str] = Field(
         ...,
         description=(
-            "The currencies the ECB feed quotes today, which are the only ones a "
+            "The currencies the feed feed quotes today, which are the only ones a "
             "total can be converted into. Just the current base when the feed "
             "has never been reached."
         ),
@@ -1000,7 +1039,7 @@ class PortfolioRow(BaseModel):
     )
     as_of: str | None = Field(..., description="Market close date the price refers to")
     market_value: float | None = Field(
-        ..., description="In the base currency (converted at the ECB reference rate)"
+        ..., description="In the base currency (converted at the feed reference rate)"
     )
     delta: float | None = Field(
         ...,
@@ -1082,7 +1121,7 @@ class Portfolio(BaseModel):
     )
     fx_as_of: str | None = Field(
         ...,
-        description="ECB reference-rate date, present when any FX conversion was applied",
+        description="reference-rate date, present when any FX conversion was applied",
     )
 
 
@@ -1446,7 +1485,7 @@ class TransferBase(BaseModel):
         description=(
             "Amount that reached the destination, in `to_currency`, from its "
             "statement. Left out, it is `amount` when the two currencies are the "
-            "same, and otherwise worked out at the ECB rate final for `date`."
+            "same, and otherwise worked out at the feed rate final for `date`."
         ),
     )
     to_currency: str = Field(..., description="Currency of the destination side, e.g. EUR")
@@ -1473,7 +1512,7 @@ class TransferRead(TransferBase):
     fx_as_of: str | None = Field(
         default=None,
         description=(
-            "The ECB day whose rate `to_amount` was worked out at; null when it "
+            "The reference-rate day whose rate `to_amount` was worked out at; null when it "
             "was stated, or when both sides share a currency"
         ),
     )
@@ -1503,6 +1542,14 @@ class CashPosition(BaseModel):
     expenses: float
     transfers_in: float
     transfers_out: float
+    entries_net: float = Field(
+        default=0.0,
+        description=(
+            "What the statement entries moved (imports and typed rows). An "
+            "entry that is one of the flows' payments moves cash HERE and the "
+            "flow's occurrence counts nothing, so one payment is one figure"
+        ),
+    )
     buys: float = Field(
         ..., description="Investment purchases paid by this institution's cash"
     )
@@ -1511,6 +1558,176 @@ class CashPosition(BaseModel):
     )
     projected: float
     base_currency: BaseCurrency
+
+
+# --- Cash entries: statement imports & one-off movements ------------------
+
+
+class CashEntryBase(BaseModel):
+    """Fields of one ACTUAL cash movement (see `models.CashEntry`).
+
+    `direction` rather than a signed amount: a statement says "income" or
+    "expenditure" before it says a number, and a negative expense has two
+    readings while "out, 42.00" has one. `amount` is therefore always ≥ 0."""
+
+    date: ObservedDate = Field(..., description="When it happened (YYYY-MM-DD)")
+    direction: Literal["in", "out"] = Field(..., description="Money in or out")
+    amount: float = Field(..., gt=0, description="Absolute amount")
+    currency: StatedCurrency = Field(..., description="Currency, e.g. CNY")
+    category: str | None = Field(default=None, description="Category code")
+    counterparty: str | None = Field(
+        default=None, description="The other side: merchant, person, bank"
+    )
+    channel: str | None = Field(
+        default=None, description="alipay | wechat | bank_card | cash | other"
+    )
+    note: str | None = Field(default=None, description="Free-form notes")
+
+
+class CashEntryCreate(CashEntryBase):
+    """Payload to record one movement by hand. An IMPORT never comes through
+    here: it is `ImportCandidate`s confirmed as one batch, so every row it
+    writes carries the batch id and the statement's own `external_id`."""
+
+    institution_id: int | None = Field(
+        default=None, description="Institution whose cash this moved"
+    )
+
+
+class CashEntryUpdate(BaseModel):
+    """What an edit may change: the reading of a row (category, note,
+    counterparty), never its money. A sum corrected is a row deleted and a row
+    typed — same as the ledger — so an edit cannot quietly move a balance."""
+
+    category: str | None = None
+    counterparty: str | None = None
+    channel: str | None = None
+    note: str | None = None
+
+
+class CashEntryRead(CashEntryBase):
+    """A stored movement as the API returns it."""
+
+    model_config = API_OUT
+
+    id: int
+    institution_id: int | None
+    external_id: str | None = Field(
+        default=None, description="The statement's own transaction number, if imported"
+    )
+    import_batch_id: int | None
+    is_transfer_leg: bool = Field(
+        ..., description="A leg of a paired Transfer; the projection counts it there"
+    )
+    linked_transfer_id: int | None
+    created_at: str
+
+
+class ImportCandidate(BaseModel):
+    """One row of an uploaded statement, as the parser read it — BEFORE
+    anything is written. The preview shows these and the user confirms them;
+    `external_id` is what makes the commit idempotent."""
+
+    date: datetime.date
+    direction: Literal["in", "out"]
+    amount: float = Field(..., gt=0)
+    currency: str = "CNY"
+    counterparty: str | None = None
+    channel: str | None = None
+    category: str | None = Field(
+        default=None, description="Suggested by the merchant→category rules; a guess"
+    )
+    note: str | None = None
+    external_id: str | None = None
+    raw: str | None = Field(
+        default=None, description="The statement's own line, kept verbatim in the preview"
+    )
+
+
+class TransferPair(BaseModel):
+    """Two rows the importer believes are one transfer between two of the
+    reader's accounts (money out of one, the same money into another). The
+    user decides: confirmed pairs become a `Transfer` and both rows stay as
+    its legs, visible but not double-counted."""
+
+    out_index: int = Field(..., description="Index into the candidates list")
+    in_index: int
+    confidence: float = Field(..., ge=0, le=1)
+
+
+class ImportPreview(BaseModel):
+    """What one uploaded file contained, ready to confirm."""
+
+    model_config = API_OUT
+
+    source: str = Field(..., description="alipay | wechat | bank | generic")
+    filename: str | None
+    rows_seen: int
+    candidates: list[ImportCandidate]
+    duplicates: list[int] = Field(
+        ..., description="Indices already in the store (same external_id) — skipped on commit"
+    )
+    transfer_pairs: list[TransferPair]
+    unreadable: list[str] = Field(
+        ..., description="Lines the parser could not read, said rather than dropped"
+    )
+
+
+class ImportCommit(BaseModel):
+    """The confirmed import: which institution the rows belong to and which of
+    the preview's candidates to write."""
+
+    institution_id: int
+    source: str
+    filename: str | None = None
+    candidates: list[ImportCandidate]
+    pair_indices: list[tuple[int, int]] = Field(
+        default_factory=list,
+        description=(
+            "(out_index, in_index) pairs the reader confirmed as one transfer: "
+            "both rows are stored marked as legs of it"
+        ),
+    )
+
+
+class ImportBatchRead(BaseModel):
+    """A stored import batch, for the batches list and for undoing."""
+
+    model_config = API_OUT
+
+    id: int
+    source: str
+    filename: str | None
+    rows_seen: int
+    rows_written: int
+    rows_duplicate: int
+    date_from: str | None
+    date_to: str | None
+    created_at: str
+
+
+class ImportCommitResult(BaseModel):
+    """What the commit wrote, and what it skipped."""
+
+    model_config = API_OUT
+
+    batch: ImportBatchRead
+    written: int
+    duplicates_skipped: int
+    transfers: int
+
+
+class TaxonomyRead(BaseModel):
+    """The category words each form offers (see `app.taxonomy`): the current
+    vocabularies for incomes, expenses and statement entries, and the aliases
+    that read rows stored under an old code."""
+
+    model_config = API_OUT
+
+    income: list[str]
+    expense: list[str]
+    entry: list[str]
+    aliases: dict[str, str]
 
 
 # --- Market prices --------------------------------------------------------
@@ -1821,6 +2038,15 @@ class TransactionBase(BaseModel):
         description="buy | sell | dividend | close",
     )
     date: datetime.date = Field(..., description="Actual execution date")
+    confirm_date: datetime.date | None = Field(
+        default=None,
+        description=(
+            "When the lagging half of this entry settles (PRD §4.3): a buy's "
+            "UNITS arrive then (an OTC fund's NAV day, T+1), a sell's or a "
+            "close's MONEY arrives then (a redemption pays days later). Null: "
+            "both halves moved on `date`. Never before the trade."
+        ),
+    )
     institution_id: int | None = Field(
         default=None, description="Institution holding the position this entry moves"
     )
@@ -1884,6 +2110,11 @@ class TransactionBase(BaseModel):
         proceeds. Loosening the fields for `close` must not loosen them for
         everything else — a buy without a ticker would create a position no
         price could ever reach."""
+        if self.confirm_date is not None and self.confirm_date < self.date:
+            raise ValueError(
+                "an entry cannot settle before it happens: confirm_date is on "
+                "or after date"
+            )
         if self.kind == "close":
             if self.amount is None:
                 raise ValueError(
@@ -1968,7 +2199,7 @@ class TransactionRead(TransactionBase):
     fx_as_of: str | None = Field(
         ...,
         description=(
-            "The ECB day whose rate turned quantity x unit_price into `amount`, "
+            "The reference-rate day whose rate turned quantity x unit_price into `amount`, "
             "when the app derived it across two currencies. Null when there was "
             "nothing to convert, or when the amount is the reader's own figure."
         ),
@@ -2014,7 +2245,7 @@ class CatchUpResult(BaseModel):
 
 
 class FxRateRead(BaseModel):
-    """One ECB reference rate: units of `currency` per 1 `base` on `as_of`."""
+    """One reference rate: units of `currency` per 1 `base` on `as_of`."""
 
     model_config = API_OUT
 

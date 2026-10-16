@@ -38,7 +38,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, event  # noqa: E402
 from sqlalchemy.exc import OperationalError  # noqa: E402
 
-from app import advisor, catalogue, composition, database, fx, issuers, models, prices  # noqa: E402
+from app import advisor, catalogue, cnmarket, composition, database, fx, issuers, models, otcfund, prices  # noqa: E402
 from app.database import Base, engine  # noqa: E402
 from app.main import app  # noqa: E402
 
@@ -163,6 +163,12 @@ def client(empty_database):
 # last one that HAS a close — so the refusal below still stands behind it,
 # through the helper it composes, while the reading itself can be tested.
 _NETWORK_BOUNDARY = {
+    cnmarket: (
+        "_get", "fetch_quotes", "fetch_closes", "fetch_dividends",
+    ),
+    otcfund: (
+        "_get", "fetch_nav", "fetch_name",
+    ),
     prices: (
         "_fetch_probe", "_fetch_close_window", "_fetch_name",
         "_fetch_recent_closes", "_fetch_currency", "_fetch_dividends",

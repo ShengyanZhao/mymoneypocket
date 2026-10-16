@@ -39,7 +39,7 @@ NOT_RECORDS = {"fx_rates", "settings", "price_cache", "alembic_version"}
 
 
 class Feed:
-    """The ECB for two bases that agree, with a switch to take either off line."""
+    """The feed for two bases that agree, with a switch to take either off line."""
 
     def __init__(self):
         self.asked: list[tuple] = []
@@ -129,6 +129,15 @@ def test_the_base_comes_with_the_currencies_it_can_become(client, feed):
     assert body == {"base_currency": "EUR", "available": ["CHF", "EUR", "GBP", "USD"]}
 
 
+def test_the_default_base_is_renminbi(client):
+    """What a database that has never chosen is in — the euro above is the one
+    this suite writes in for itself (conftest `euro_base`), not a default."""
+    with SessionLocal() as db:
+        db.query(models.Setting).filter(models.Setting.key == fx.BASE_CURRENCY_KEY).delete()
+        db.commit()
+        assert fx.base_currency(db) == "CNY"
+
+
 def test_changing_the_base_moves_every_total_and_rewrites_no_recorded_amount(client, feed):
     _wealth(client)
     in_euro = _read_everything(client)
@@ -173,7 +182,7 @@ def test_a_currency_the_feed_does_not_quote_cannot_be_the_base(client, feed):
     r = client.put("/api/settings/base-currency", json={"base_currency": "XYZ"})
 
     assert r.status_code == 422
-    assert "not a currency the ECB rate feed quotes" in r.json()["detail"]
+    assert f"not a currency the {fx.source_name()} reference-rate feed quotes" in r.json()["detail"]
     assert client.get("/api/settings/base-currency").json()["base_currency"] == "EUR"
 
 

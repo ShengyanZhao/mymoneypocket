@@ -4,7 +4,7 @@ Brief AN, item 4 (2026-10-10): in the reader's second test round the chat was
 asked to record a transfer between two of their accounts and to set an
 account's cash balance on a day, and could do neither. `record_transfer` is
 the Cash flow page's transfer: both accounts, both currencies, and what
-reached the second account worked out at the ECB rate of the day by the
+reached the second account worked out at the reference rate of the day by the
 function that stores it, or the form's own refusal, in words, when that day
 has no final rate. `set_cash_balance` is the account page's balance: a new day
 is added, a day that has one is replaced with its diff, and the card says
@@ -165,7 +165,7 @@ def test_a_transfer_across_two_currencies_is_the_forms_at_the_rate_of_its_day(
     )
     assert card["confirmation"] == "light"
     assert card["title"] == (
-        f"transfer: 500.00 USD → 400.00 EUR (at the ECB rate of {DAY}), "
+        f"transfer: 500.00 USD → 400.00 EUR (at the {fx.source_name()} reference rate of {DAY}), "
         f"Dollar Bank to Euro Bank, {DAY}"
     )
     assert card["consequence"] == (
@@ -203,7 +203,7 @@ def test_what_arrived_from_the_statement_is_kept_as_stated(client, monkeypatch, 
 def test_a_transfer_whose_day_has_no_final_rate_is_refused_with_the_forms_sentence(
     client, monkeypatch
 ):
-    """Today, before the ECB publishes: yesterday's rate is the one in force,
+    """Today, before the feed publishes: yesterday's rate is the one in force,
     and a sum fixed at it would keep yesterday's rate for good."""
     yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
     monkeypatch.setattr(fx, "_fetch_rates", lambda base, start, end=None: {yesterday: {"USD": 1.25}})

@@ -188,6 +188,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cash-entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Cash Entries
+         * @description Stored movements, newest first, narrowed by account, window or batch.
+         */
+        get: operations["list_cash_entries_api_cash_entries_get"];
+        put?: never;
+        /**
+         * Create Cash Entry
+         * @description One movement typed by hand — the route for money no file covers.
+         */
+        post: operations["create_cash_entry_api_cash_entries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cash-entries/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Cash Entry */
+        delete: operations["delete_cash_entry_api_cash_entries__entry_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Cash Entry
+         * @description Correct the reading of a row (category, counterparty, channel, note).
+         *     Its money is not settable — see `schemas.CashEntryUpdate`.
+         */
+        patch: operations["update_cash_entry_api_cash_entries__entry_id__patch"];
+        trace?: never;
+    };
     "/api/cash/positions": {
         parameters: {
             query?: never;
@@ -524,7 +570,7 @@ export interface paths {
         };
         /**
          * Get Fx Rates
-         * @description The ECB reference rates in force today against the base (units per 1
+         * @description The feed reference rates in force today against the base (units per 1
          *     base): the latest published day, asked for at most once a day. Empty until
          *     the first successful fetch; ?refresh=true asks again. Each row names its
          *     base and its day, so a rate is never a bare number here either.
@@ -653,6 +699,90 @@ export interface paths {
          *     (recomputing value if the holding is quantity-based).
          */
         post: operations["refresh_holding_price_api_holdings__holding_id__refresh_price_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Imports
+         * @description Every import, newest first — the list to undo from.
+         */
+        get: operations["list_imports_api_imports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/{batch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Import
+         * @description Undo one import: its rows go with it, everything else stays.
+         */
+        delete: operations["delete_import_api_imports__batch_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Commit Import
+         * @description Write the confirmed rows as one batch. Idempotent per row: the same
+         *     file twice writes nothing the second time (`crud.commit_import`), and the
+         *     batch is the unit the reader can undo.
+         */
+        post: operations["commit_import_api_imports_commit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Import
+         * @description Read an exported statement and say what is in it. Nothing is written:
+         *     the reader sees every row, every suggested category, every duplicate that
+         *     the commit would skip, before agreeing to anything.
+         */
+        post: operations["preview_import_api_imports_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1269,7 +1399,7 @@ export interface paths {
         /**
          * Get Base Currency
          * @description The currency every total is shown in, and the ones it can become: the
-         *     currencies the ECB feed quotes, because a total can only be converted into
+         *     currencies the feed feed quotes, because a total can only be converted into
          *     a currency somebody publishes a rate for.
          */
         get: operations["get_base_currency_api_settings_base_currency_get"];
@@ -1308,9 +1438,10 @@ export interface paths {
         get: operations["get_tax_settings_api_settings_tax_get"];
         /**
          * Put Tax Settings
-         * @description Replace all three. A null clears that key, which is how the reader says
+         * @description Replace them all. A null clears that key, which is how the reader says
          *     they do not know a rate — distinct from writing 0, which claims they pay
-         *     nothing.
+         *     nothing. China's dividend schedule arrives here as `dividend_tiers` when
+         *     the reader adopts it; a flat dividend rate typed beside it wins.
          */
         put: operations["put_tax_settings_api_settings_tax_put"];
         post?: never;
@@ -1410,6 +1541,27 @@ export interface paths {
          *     (`app/questionnaire.py`).
          */
         get: operations["get_survey_questions_api_survey_questions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/taxonomy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Taxonomy
+         * @description The words each form offers: income, expense, statement entry — and the
+         *     alias map that makes rows stored under an old code readable.
+         */
+        get: operations["get_taxonomy_api_taxonomy_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1825,7 +1977,7 @@ export interface components {
         BaseCurrencySetting: {
             /**
              * Base Currency
-             * @description An ISO code the ECB reference-rate feed quotes, e.g. EUR, USD
+             * @description An ISO code the feed reference-rate feed quotes, e.g. EUR, USD
              */
             base_currency: string;
         };
@@ -1836,14 +1988,19 @@ export interface components {
         BaseCurrencySettingRead: {
             /**
              * Available
-             * @description The currencies the ECB feed quotes today, which are the only ones a total can be converted into. Just the current base when the feed has never been reached.
+             * @description The currencies the feed feed quotes today, which are the only ones a total can be converted into. Just the current base when the feed has never been reached.
              */
             available: string[];
             /**
              * Base Currency
-             * @description An ISO code the ECB reference-rate feed quotes, e.g. EUR, USD
+             * @description An ISO code the feed reference-rate feed quotes, e.g. EUR, USD
              */
             base_currency: string;
+        };
+        /** Body_preview_import_api_imports_preview_post */
+        Body_preview_import_api_imports_preview_post: {
+            /** File */
+            file: string;
         };
         /**
          * CashAnchorCreate
@@ -1904,6 +2061,145 @@ export interface components {
              * @description Free-form notes
              */
             note: string | null;
+        };
+        /**
+         * CashEntryCreate
+         * @description Payload to record one movement by hand. An IMPORT never comes through
+         *     here: it is `ImportCandidate`s confirmed as one batch, so every row it
+         *     writes carries the batch id and the statement's own `external_id`.
+         */
+        CashEntryCreate: {
+            /**
+             * Amount
+             * @description Absolute amount
+             */
+            amount: number;
+            /**
+             * Category
+             * @description Category code
+             */
+            category?: string | null;
+            /**
+             * Channel
+             * @description alipay | wechat | bank_card | cash | other
+             */
+            channel?: string | null;
+            /**
+             * Counterparty
+             * @description The other side: merchant, person, bank
+             */
+            counterparty?: string | null;
+            /**
+             * Currency
+             * @description Currency, e.g. CNY
+             */
+            currency: string;
+            /**
+             * Date
+             * Format: date
+             * @description When it happened (YYYY-MM-DD)
+             */
+            date: string;
+            /**
+             * Direction
+             * @description Money in or out
+             * @enum {string}
+             */
+            direction: "in" | "out";
+            /**
+             * Institution Id
+             * @description Institution whose cash this moved
+             */
+            institution_id?: number | null;
+            /**
+             * Note
+             * @description Free-form notes
+             */
+            note?: string | null;
+        };
+        /**
+         * CashEntryRead
+         * @description A stored movement as the API returns it.
+         */
+        CashEntryRead: {
+            /**
+             * Amount
+             * @description Absolute amount
+             */
+            amount: number;
+            /**
+             * Category
+             * @description Category code
+             */
+            category: string | null;
+            /**
+             * Channel
+             * @description alipay | wechat | bank_card | cash | other
+             */
+            channel: string | null;
+            /**
+             * Counterparty
+             * @description The other side: merchant, person, bank
+             */
+            counterparty: string | null;
+            /** Created At */
+            created_at: string;
+            /**
+             * Currency
+             * @description Currency, e.g. CNY
+             */
+            currency: string;
+            /**
+             * Date
+             * Format: date
+             * @description When it happened (YYYY-MM-DD)
+             */
+            date: string;
+            /**
+             * Direction
+             * @description Money in or out
+             * @enum {string}
+             */
+            direction: "in" | "out";
+            /**
+             * External Id
+             * @description The statement's own transaction number, if imported
+             */
+            external_id: string | null;
+            /** Id */
+            id: number;
+            /** Import Batch Id */
+            import_batch_id: number | null;
+            /** Institution Id */
+            institution_id: number | null;
+            /**
+             * Is Transfer Leg
+             * @description A leg of a paired Transfer; the projection counts it there
+             */
+            is_transfer_leg: boolean;
+            /** Linked Transfer Id */
+            linked_transfer_id: number | null;
+            /**
+             * Note
+             * @description Free-form notes
+             */
+            note: string | null;
+        };
+        /**
+         * CashEntryUpdate
+         * @description What an edit may change: the reading of a row (category, note,
+         *     counterparty), never its money. A sum corrected is a row deleted and a row
+         *     typed — same as the ledger — so an edit cannot quietly move a balance.
+         */
+        CashEntryUpdate: {
+            /** Category */
+            category?: string | null;
+            /** Channel */
+            channel?: string | null;
+            /** Counterparty */
+            counterparty?: string | null;
+            /** Note */
+            note?: string | null;
         };
         /**
          * CashFlowSummary
@@ -1988,6 +2284,12 @@ export interface components {
              * @description Investment purchases paid by this institution's cash
              */
             buys: number;
+            /**
+             * Entries Net
+             * @description What the statement entries moved (imports and typed rows). An entry that is one of the flows' payments moves cash HERE and the flow's occurrence counts nothing, so one payment is one figure
+             * @default 0
+             */
+            entries_net: number;
             /** Expenses */
             expenses: number;
             /** Income */
@@ -3029,6 +3331,34 @@ export interface components {
             said: string;
         };
         /**
+         * DividendTaxed
+         * @description What one tier's rate was applied to, in `TaxEstimate.dividends_by_rate`.
+         */
+        DividendTaxed: {
+            /**
+             * Amount
+             * @description The gross dividend base that fell in this tier
+             */
+            amount: number;
+            /**
+             * Rate
+             * @description PERCENT, not a fraction
+             */
+            rate: number;
+        };
+        /**
+         * DividendTier
+         * @description One step of a declared dividend schedule (the amendment at the top of
+         *     app/tax.py): a holding age's cap, inclusive, and the rate PERCENT for
+         *     shares held up to it. The last step's cap is null — beyond every cap.
+         */
+        DividendTier: {
+            /** Days Max */
+            days_max?: number | null;
+            /** Rate */
+            rate: number;
+        };
+        /**
          * ExpenseCreate
          * @description Payload to create an expense.
          */
@@ -3169,7 +3499,7 @@ export interface components {
         };
         /**
          * FxRateRead
-         * @description One ECB reference rate: units of `currency` per 1 `base` on `as_of`.
+         * @description One reference rate: units of `currency` per 1 `base` on `as_of`.
          */
         FxRateRead: {
             /** As Of */
@@ -3367,7 +3697,7 @@ export interface components {
             value: number | null;
             /**
              * Value Base
-             * @description `value` in `base_currency`, at the ECB rate — by the ticker's listing currency where it has one, by `currency` otherwise. The figure to display and to total; `value` is the one to edit.
+             * @description `value` in `base_currency`, at the feed rate — by the ticker's listing currency where it has one, by `currency` otherwise. The figure to display and to total; `value` is the one to edit.
              */
             value_base: number;
         };
@@ -3375,6 +3705,138 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * ImportBatchRead
+         * @description A stored import batch, for the batches list and for undoing.
+         */
+        ImportBatchRead: {
+            /** Created At */
+            created_at: string;
+            /** Date From */
+            date_from: string | null;
+            /** Date To */
+            date_to: string | null;
+            /** Filename */
+            filename: string | null;
+            /** Id */
+            id: number;
+            /** Rows Duplicate */
+            rows_duplicate: number;
+            /** Rows Seen */
+            rows_seen: number;
+            /** Rows Written */
+            rows_written: number;
+            /** Source */
+            source: string;
+        };
+        /**
+         * ImportCandidate
+         * @description One row of an uploaded statement, as the parser read it — BEFORE
+         *     anything is written. The preview shows these and the user confirms them;
+         *     `external_id` is what makes the commit idempotent.
+         */
+        ImportCandidate: {
+            /** Amount */
+            amount: number;
+            /**
+             * Category
+             * @description Suggested by the merchant→category rules; a guess
+             */
+            category?: string | null;
+            /** Channel */
+            channel?: string | null;
+            /** Counterparty */
+            counterparty?: string | null;
+            /**
+             * Currency
+             * @default CNY
+             */
+            currency?: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "in" | "out";
+            /** External Id */
+            external_id?: string | null;
+            /** Note */
+            note?: string | null;
+            /**
+             * Raw
+             * @description The statement's own line, kept verbatim in the preview
+             */
+            raw?: string | null;
+        };
+        /**
+         * ImportCommit
+         * @description The confirmed import: which institution the rows belong to and which of
+         *     the preview's candidates to write.
+         */
+        ImportCommit: {
+            /** Candidates */
+            candidates: components["schemas"]["ImportCandidate"][];
+            /** Filename */
+            filename?: string | null;
+            /** Institution Id */
+            institution_id: number;
+            /**
+             * Pair Indices
+             * @description (out_index, in_index) pairs the reader confirmed as one transfer: both rows are stored marked as legs of it
+             */
+            pair_indices?: [
+                number,
+                number
+            ][];
+            /** Source */
+            source: string;
+        };
+        /**
+         * ImportCommitResult
+         * @description What the commit wrote, and what it skipped.
+         */
+        ImportCommitResult: {
+            batch: components["schemas"]["ImportBatchRead"];
+            /** Duplicates Skipped */
+            duplicates_skipped: number;
+            /** Transfers */
+            transfers: number;
+            /** Written */
+            written: number;
+        };
+        /**
+         * ImportPreview
+         * @description What one uploaded file contained, ready to confirm.
+         */
+        ImportPreview: {
+            /** Candidates */
+            candidates: components["schemas"]["ImportCandidate"][];
+            /**
+             * Duplicates
+             * @description Indices already in the store (same external_id) — skipped on commit
+             */
+            duplicates: number[];
+            /** Filename */
+            filename: string | null;
+            /** Rows Seen */
+            rows_seen: number;
+            /**
+             * Source
+             * @description alipay | wechat | bank | generic
+             */
+            source: string;
+            /** Transfer Pairs */
+            transfer_pairs: components["schemas"]["TransferPair"][];
+            /**
+             * Unreadable
+             * @description Lines the parser could not read, said rather than dropped
+             */
+            unreadable: string[];
         };
         /**
          * IncomeSourceCreate
@@ -3799,7 +4261,7 @@ export interface components {
             financial: number;
             /**
              * Fx As Of
-             * @description The ECB day whose rates converted this point — the latest published on or before `date`. Null when nothing in the point needed converting.
+             * @description The reference-rate day whose rates converted this point — the latest published on or before `date`. Null when nothing in the point needed converting.
              */
             fx_as_of: string | null;
             /** Liabilities */
@@ -3939,7 +4401,7 @@ export interface components {
             declared_instead: components["schemas"]["ArrivedPosition"][];
             /**
              * Fx As Of
-             * @description ECB reference-rate date, present when any FX conversion was applied
+             * @description reference-rate date, present when any FX conversion was applied
              */
             fx_as_of: string | null;
             /** Priced */
@@ -4139,7 +4601,7 @@ export interface components {
             live_price: number | null;
             /**
              * Market Value
-             * @description In the base currency (converted at the ECB reference rate)
+             * @description In the base currency (converted at the feed reference rate)
              */
             market_value: number | null;
             /**
@@ -4212,7 +4674,7 @@ export interface components {
             repriced: string[];
             /**
              * Value Base
-             * @description What this situation was worth, in `base_currency`: its holdings converted at the ECB rate, by the listing currency where the ticker has one. Computed by the router, never by the model.
+             * @description What this situation was worth, in `base_currency`: its holdings converted at the feed rate, by the listing currency where the ticker has one. Computed by the router, never by the model.
              */
             value_base: number;
         };
@@ -4490,7 +4952,7 @@ export interface components {
             note: string | null;
             /**
              * Value Base
-             * @description What this situation was worth, in `base_currency`: its holdings converted at the ECB rate, by the listing currency where the ticker has one. Computed by the router, never by the model.
+             * @description What this situation was worth, in `base_currency`: its holdings converted at the feed rate, by the listing currency where the ticker has one. Computed by the router, never by the model.
              */
             value_base: number;
         };
@@ -4603,8 +5065,13 @@ export interface components {
             capital_gains_rate: number;
             /** Country */
             country: string;
+            /**
+             * Dividend Tiers
+             * @description The schedule, for a country whose dividend rate is not one number
+             */
+            dividend_tiers: components["schemas"]["DividendTier"][] | null;
             /** Dividend Withholding Rate */
-            dividend_withholding_rate: number;
+            dividend_withholding_rate: number | null;
             /**
              * Omits
              * @description The carve-outs this flat rate knowingly flattens. Shipped WITH the number because it is what makes a three-country table honest rather than merely short.
@@ -4668,6 +5135,11 @@ export interface components {
              */
             dividend_withholding_rate: number | null;
             /**
+             * Dividends By Rate
+             * @description What a DECLARED SCHEDULE applied, tier by tier: the same gross base as `dividends_gross_estimated`, sorted by rate. Empty when no schedule was applied (none declared, or a flat rate typed beside one, which wins).
+             */
+            dividends_by_rate: components["schemas"]["DividendTaxed"][];
+            /**
              * Dividends Gross Estimated
              * @description The dividend base: ONLY the rows still marked estimated, which are the only ones still carrying a gross figure.
              */
@@ -4704,6 +5176,24 @@ export interface components {
             total: number | null;
         };
         /**
+         * TaxonomyRead
+         * @description The category words each form offers (see `app.taxonomy`): the current
+         *     vocabularies for incomes, expenses and statement entries, and the aliases
+         *     that read rows stored under an old code.
+         */
+        TaxonomyRead: {
+            /** Aliases */
+            aliases: {
+                [key: string]: string;
+            };
+            /** Entry */
+            entry: string[];
+            /** Expense */
+            expense: string[];
+            /** Income */
+            income: string[];
+        };
+        /**
          * TaxSettings
          * @description The three settings the reader controls, as they are written and read.
          *
@@ -4718,6 +5208,11 @@ export interface components {
              * @description Free text: any country, listed or not
              */
             country?: string | null;
+            /**
+             * Dividend Tiers
+             * @description A declared dividend schedule, for a country whose dividend rate is a function of the holding period (China's 20%/10%/免征). A flat dividend rate typed beside it wins; null clears it.
+             */
+            dividend_tiers?: components["schemas"]["DividendTier"][] | null;
             /** Dividend Withholding Rate */
             dividend_withholding_rate?: number | null;
         };
@@ -4737,6 +5232,11 @@ export interface components {
              * @description Free text: any country, listed or not
              */
             country: string | null;
+            /**
+             * Dividend Tiers
+             * @description A declared dividend schedule, for a country whose dividend rate is a function of the holding period (China's 20%/10%/免征). A flat dividend rate typed beside it wins; null clears it.
+             */
+            dividend_tiers: components["schemas"]["DividendTier"][] | null;
             /** Dividend Withholding Rate */
             dividend_withholding_rate: number | null;
             /** Known Countries */
@@ -4764,6 +5264,11 @@ export interface components {
              * @description Institution whose cash paid (defaults to institution_id)
              */
             cash_institution_id: number | null;
+            /**
+             * Confirm Date
+             * @description When the lagging half of this entry settles (PRD §4.3): a buy's UNITS arrive then (an OTC fund's NAV day, T+1), a sell's or a close's MONEY arrives then (a redemption pays days later). Null: both halves moved on `date`. Never before the trade.
+             */
+            confirm_date: string | null;
             /** Created At */
             created_at: string;
             /**
@@ -4795,7 +5300,7 @@ export interface components {
             fees: number;
             /**
              * Fx As Of
-             * @description The ECB day whose rate turned quantity x unit_price into `amount`, when the app derived it across two currencies. Null when there was nothing to convert, or when the amount is the reader's own figure.
+             * @description The reference-rate day whose rate turned quantity x unit_price into `amount`, when the app derived it across two currencies. Null when there was nothing to convert, or when the amount is the reader's own figure.
              */
             fx_as_of: string | null;
             /** Id */
@@ -4896,6 +5401,11 @@ export interface components {
              */
             cash_institution_id?: number | null;
             /**
+             * Confirm Date
+             * @description When the lagging half of this entry settles (PRD §4.3): a buy's UNITS arrive then (an OTC fund's NAV day, T+1), a sell's or a close's MONEY arrives then (a redemption pays days later). Null: both halves moved on `date`. Never before the trade.
+             */
+            confirm_date?: string | null;
+            /**
              * Currency
              * @description Currency of `amount` and `fees`: the cash that left or reached the account, e.g. EUR
              */
@@ -4989,7 +5499,7 @@ export interface components {
             note?: string | null;
             /**
              * To Amount
-             * @description Amount that reached the destination, in `to_currency`, from its statement. Left out, it is `amount` when the two currencies are the same, and otherwise worked out at the ECB rate final for `date`.
+             * @description Amount that reached the destination, in `to_currency`, from its statement. Left out, it is `amount` when the two currencies are the same, and otherwise worked out at the feed rate final for `date`.
              */
             to_amount?: number | null;
             /**
@@ -5002,6 +5512,24 @@ export interface components {
              * @description Target institution id
              */
             to_institution_id?: number | null;
+        };
+        /**
+         * TransferPair
+         * @description Two rows the importer believes are one transfer between two of the
+         *     reader's accounts (money out of one, the same money into another). The
+         *     user decides: confirmed pairs become a `Transfer` and both rows stay as
+         *     its legs, visible but not double-counted.
+         */
+        TransferPair: {
+            /** Confidence */
+            confidence: number;
+            /** In Index */
+            in_index: number;
+            /**
+             * Out Index
+             * @description Index into the candidates list
+             */
+            out_index: number;
         };
         /**
          * TransferRead
@@ -5033,7 +5561,7 @@ export interface components {
             from_institution_id: number | null;
             /**
              * Fx As Of
-             * @description The ECB day whose rate `to_amount` was worked out at; null when it was stated, or when both sides share a currency
+             * @description The reference-rate day whose rate `to_amount` was worked out at; null when it was stated, or when both sides share a currency
              */
             fx_as_of: string | null;
             /** Id */
@@ -5066,7 +5594,7 @@ export interface components {
          *     as wrong as one quietly inflated (`fx.Converter.to_base_or_as_stored`). What
          *     was missing is this — the saying so. Two cases reach it and the reader tells
          *     them apart at a glance, which is why the code is printed as typed: a code
-         *     that is a typo (`Doll`) is corrected on the row, and a real currency the ECB
+         *     that is a typo (`Doll`) is corrected on the row, and a real currency the feed
          *     does not quote (`TWD`) cannot be converted by anybody and the figure simply
          *     is in another unit.
          */
@@ -5481,6 +6009,137 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeletionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cash_entries_api_cash_entries_get: {
+        parameters: {
+            query?: {
+                batch_id?: number | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                institution_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashEntryRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_cash_entry_api_cash_entries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CashEntryCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashEntryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_cash_entry_api_cash_entries__entry_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_cash_entry_api_cash_entries__entry_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CashEntryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashEntryRead"];
                 };
             };
             /** @description Validation Error */
@@ -6299,6 +6958,126 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HoldingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_imports_api_imports_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchRead"][];
+                };
+            };
+        };
+    };
+    delete_import_api_imports__batch_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    commit_import_api_imports_commit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportCommit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportCommitResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_import_api_imports_preview_post: {
+        parameters: {
+            query?: {
+                /** @description The account the rows will land in; its store is what the duplicate check reads */
+                institution_id?: number | null;
+                /** @description Force a parser (alipay | wechat) */
+                source?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_preview_import_api_imports_preview_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportPreview"];
                 };
             };
             /** @description Validation Error */
@@ -7976,6 +8755,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SurveyQuestion"][];
+                };
+            };
+        };
+    };
+    get_taxonomy_api_taxonomy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxonomyRead"];
                 };
             };
         };

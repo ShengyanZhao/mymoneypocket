@@ -23,6 +23,11 @@ real_asset_valuations, liabilities, liability_balances, income_sources,
 expenses, cash_anchors, transfers, survey_responses, goals,
 accumulation_plans, transactions, price_cache, composition_cache, fx_rates,
 chain_runs, chain_steps, chat_conversations, chat_messages, watchlist_items.
+
+Cash entries (CN): import_batches + cash_entries are the statement lane — one
+ACTUAL movement per row (an Alipay/WeChat payment, a bank fee), imported from
+an exported file or typed by hand. They sit beside the recurring flows and
+beside transfers, never instead of either (see `CashEntry`).
 """
 
 from __future__ import annotations
@@ -443,7 +448,7 @@ class Transfer(Base):
     )
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     currency: Mapped[str] = mapped_column(String, nullable=False)
-    # What reached the destination, fixed on the day. Worked out at the ECB
+    # What reached the destination, fixed on the day. Worked out at the feed
     # rate final for `date` when it was not copied from a statement, and then
     # `fx_as_of` is that rate's day; a figure the reader typed leaves it empty.
     to_amount: Mapped[float] = mapped_column(Float, nullable=False)
@@ -534,6 +539,18 @@ class Transaction(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     kind: Mapped[str] = mapped_column(String, default="buy", nullable=False)
     date: Mapped[str] = mapped_column(String, nullable=False, index=True)  # YYYY-MM-DD
+    # When the LAGGING half of this entry lands, or null when nothing lags —
+    # which is every row written before this column and most rows after it.
+    #
+    # One trade, two settlement moments (PRD §4.3): an OTC fund bought on the
+    # 3rd takes its cash on the 3rd and its units on the 4th (the NAV day,
+    # T+1; T+2 for QDII), and a redemption leaves its units on the day it is
+    # made and pays its cash days later. `date` is the trade; `confirm_date`
+    # is the later of the two; which SIDE lags follows the kind — a buy's
+    # units are late (`quantity_date`), a sell's or a close's money is late
+    # (`cash_date`). Null means both sides moved at `date`, and every reader
+    # that has never heard of this column reads exactly what it read before.
+    confirm_date: Mapped[str | None] = mapped_column(String, nullable=True)  # YYYY-MM-DD
     # Institution holding the bought position.
     institution_id: Mapped[int | None] = mapped_column(
         ForeignKey("institutions.id", ondelete="SET NULL"), nullable=True, index=True
@@ -559,7 +576,7 @@ class Transaction(Base):
     currency: Mapped[str] = mapped_column(String, nullable=False)
     # What `unit_price` is in. Empty only for a close, which has no price.
     price_currency: Mapped[str | None] = mapped_column(String, nullable=True)
-    # The ECB day whose rate turned quantity * unit_price into `amount`, when
+    # The reference-rate day whose rate turned quantity * unit_price into `amount`, when
     # the app derived it across two currencies. Empty when there was nothing to
     # convert, or when the figure is the reader's own — which is how a debit
     # copied from a statement is told apart from one worked out here.
@@ -573,6 +590,33 @@ class Transaction(Base):
     estimated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[str] = mapped_column(String, default=_utcnow_iso, nullable=False)
+
+    @property
+    def quantity_date(self) -> str:
+        """When the UNITS of this entry moved.
+
+        A buy's units land on its `confirm_date` — the NAV day an OTC fund
+        confirms on — and every other kind moves its units at the trade:
+        a sell or a close takes them away the moment it is made. Nothing here
+        has ever heard of settlement, and everything that walks units (the
+        projection's `replay`, the dividend share count) reads this rather
+        than `date`."""
+        return self.confirm_date if (self.kind == "buy" and self.confirm_date) else self.date
+
+    @property
+    def cash_date(self) -> str:
+        """When the MONEY of this entry moved.
+
+        A buy pays on the trade day and waits for its units; a sell's, a
+        close's or a dividend's money arrives on its `confirm_date` when one
+        is named (a redemption pays days after its shares left) and at the
+        trade when it is not. The cash register reads this rather than
+        `date`."""
+        return (
+            self.confirm_date
+            if (self.kind in ("sell", "close", "dividend") and self.confirm_date)
+            else self.date
+        )
 
 
 class ChainRun(Base):
@@ -697,7 +741,7 @@ class PriceCache(Base):
 
 
 class FxRate(Base):
-    """One ECB reference rate: units of `currency` per 1 `base`, as published
+    """One reference rate: units of `currency` per 1 `base`, as published
     for the day `as_of`. Fetched from frankfurter.app (see app/fx.py).
 
     A row per DAY, kept: a refresh adds the days after the newest one rather
@@ -717,7 +761,7 @@ class FxRate(Base):
 
     base: Mapped[str] = mapped_column(String, primary_key=True)
     currency: Mapped[str] = mapped_column(String, primary_key=True)
-    as_of: Mapped[str] = mapped_column(String, primary_key=True)  # the ECB day
+    as_of: Mapped[str] = mapped_column(String, primary_key=True)  # the reference-rate day
     rate: Mapped[float] = mapped_column(Float, nullable=False)
     fetched_at: Mapped[str] = mapped_column(String, default=_utcnow_iso, nullable=False)
 
@@ -989,3 +1033,107 @@ class WatchlistItem(Base):
     # watchlist line is read as "added on", and the identity check in
     # tests/test_write_contract.py knows both names for the same reason.
     added_at: Mapped[str] = mapped_column(String, default=_utcnow_iso, nullable=False)
+
+
+class ImportBatch(Base):
+    """One import of a statement file (an Alipay/WeChat CSV, a bank export) and
+    what became of it. A batch is the unit of IDENTITY and of UNDOING: every
+    `CashEntry` it wrote carries its id, so one delete removes what one file
+    added and nothing the reader typed by hand in between.
+
+    The file itself is not stored here — only what the importer could say
+    about it: where it came from (`source`), how many rows it held, and the
+    window it covered. That is what the preview shows before anything is
+    written, and what the batches list shows after."""
+
+    __tablename__ = "import_batches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # alipay | wechat | bank | broker | generic — which parser read the file.
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    # The file's own name, for the reader's memory ("that was the November
+    # one"), never for opening it again: an import is not a link to a file.
+    filename: Mapped[str | None] = mapped_column(String, nullable=True)
+    rows_seen: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    rows_written: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    rows_duplicate: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # The statement window this file covered, both ends inclusive.
+    date_from: Mapped[str | None] = mapped_column(String, nullable=True)  # YYYY-MM-DD
+    date_to: Mapped[str | None] = mapped_column(String, nullable=True)  # YYYY-MM-DD
+    created_at: Mapped[str] = mapped_column(String, default=_utcnow_iso, nullable=False)
+
+    entries: Mapped[list["CashEntry"]] = relationship(
+        back_populates="batch",
+        cascade="all, delete-orphan",
+    )
+
+
+class CashEntry(Base):
+    """One ACTUAL cash movement that already happened: a payment, a receipt, a
+    fee — what an Alipay or WeChat statement is made of, and what the reader
+    types by hand when no file exists.
+
+    It is the third voice of the cash register, and it does not replace the
+    other two. `IncomeSource`/`Expense` say what REPEATS (a salary, a rent) and
+    feed the projection; `Transfer` says money moved between two of the
+    reader's own accounts; a `CashEntry` says one sum left or reached one
+    account on one day, once. The projection counts a recurring flow only on
+    the days no entry covers it, so importing a statement does not double the
+    salary it happens to contain.
+
+    A leg of a transfer the importer paired is marked `is_transfer_leg` and,
+    once the reader links it to the `Transfer` that carries the movement,
+    `linked_transfer_id`. A leg WITH a transfer is ignored by the projection —
+    the `Transfer` already moved both accounts. A leg paired only within one
+    statement (both sides in the same account, money going out and coming back)
+    stays linked to nothing: the projection counts both and they cancel, which
+    is exactly what happened to the balance.
+
+    `external_id` is the statement's own transaction number (Alipay's trade
+    no., WeChat's voucher no.) and is what makes an import IDEMPOTENT: the same
+    file twice writes nothing the second time. Hand-typed rows have none, and
+    two hand-typed rows may look alike — only an importer is ever expected to
+    deduplicate, and only against the ids it can see."""
+
+    __tablename__ = "cash_entries"
+    __table_args__ = (
+        UniqueConstraint(
+            "institution_id", "external_id", name="uq_cash_entry_institution_external"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    date: Mapped[str] = mapped_column(String, nullable=False, index=True)  # YYYY-MM-DD
+    institution_id: Mapped[int | None] = mapped_column(
+        ForeignKey("institutions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # in | out — which way the money moved, so `amount` is always positive and
+    # no reader has to decide what a negative expense means.
+    direction: Mapped[str] = mapped_column(String, nullable=False)
+    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    currency: Mapped[str] = mapped_column(String, nullable=False)
+    category: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Who was on the other side: the merchant ("Meituan"), a person's name,
+    # the bank. A statement's own words, kept as written — the reader
+    # recognizes them and a rule cannot.
+    counterparty: Mapped[str | None] = mapped_column(String, nullable=True)
+    # alipay | wechat | bank_card | cash | other — which rail it rode in on.
+    channel: Mapped[str | None] = mapped_column(String, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    import_batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("import_batches.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    is_transfer_leg: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    linked_transfer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("transfers.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[str] = mapped_column(String, default=_utcnow_iso, nullable=False)
+
+    batch: Mapped["ImportBatch | None"] = relationship(back_populates="entries")

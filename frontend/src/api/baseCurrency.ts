@@ -5,7 +5,7 @@ import type { Schemas } from "./types";
 
    A typed resource beside the tax settings, for the same reason: the settings
    table holds keys the browser must not reach, so each one somebody actually
-   sets has its own door. The list of choices comes from the ECB feed, because
+   sets has its own door. The list of choices comes from the rate feed, because
    a total can only be converted into a currency somebody publishes a rate for. */
 export type BaseCurrencySetting = Schemas["BaseCurrencySettingRead"];
 

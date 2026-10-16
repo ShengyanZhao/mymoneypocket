@@ -247,7 +247,7 @@ const ANALYZER = "run_analysis";
 
 /* What a confirmed card's work has finished, while it is finishing it: the
    analyzer's three to six model calls, or, since brief AN, the base's new
-   rates fetched from the ECB. The page this replaced would not fake a
+   rates fetched from the rate feed. The page this replaced would not fake a
    progress bar because it could not: the chain wrote nothing until all of it
    had finished, so "step 2 of 4" was a sentence nobody had been told. Each of
    these arrived as an event saying a step is done, so every line here is

@@ -30,7 +30,7 @@ import math
 import re
 from dataclasses import dataclass
 
-from app import dated
+from app import cnmarket, dated, otcfund
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +157,32 @@ def _fetch_close_window(
     session before an ex-date: `get_price_on` read KO's 2026-09-14 as 88.82
     where the close was 89.35, ENI.MI's 2026-09-18 as 23.68 for 23.95, and
     ISF.L's 2026-09-16 as 1046.1134 for 1046.20. So a plan's occurrence priced
-    after an ex-date of its fund had passed was bought below its day's price."""
+    after an ex-date of its fund had passed was bought below its day's price.
+
+    A home-market listing (`.SS`, `.SZ`, `.HK`) asks the home source first
+    (`cnmarket`, unadjusted there too) and Yahoo only behind it: without a
+    proxy Yahoo is the one endpoint that does not answer from the mainland,
+    and the two sources' closes agree where both were measured. An OTC fund
+    (bare code, `.OF`) is no listing at all and is read from its NAV report
+    (`otcfund`), which is daily and after the close."""
+    if cnmarket.is_cn(symbol):
+        try:
+            closes = cnmarket.fetch_closes(symbol, start, end)
+        except Exception:
+            closes = {}
+        if closes:
+            return sorted(closes.items())
+    if otcfund.is_fund(symbol):
+        try:
+            rows = otcfund.fetch_nav(
+                otcfund.fund_code(symbol), start, end - datetime.timedelta(days=1)
+            )
+        except Exception:
+            rows = []
+        if rows:
+            # The window is [start, end): `fetch_nav`'s own end is inclusive,
+            # hence the day taken off above.
+            return [(r["date"], r["nav"]) for r in rows]
     import yfinance as yf
 
     hist = yf.Ticker(symbol).history(
@@ -296,7 +321,26 @@ def _close_on(symbol: str, on: datetime.date, today: datetime.date) -> tuple[flo
 
 
 def _fetch_name(symbol: str) -> str | None:
-    """The instrument's own name, as the exchange knows it. Network call."""
+    """The instrument's own name, as the exchange knows it. Network call.
+
+    A home-market listing takes its name from the home quote, which carries
+    it in the same answer as the price (one request, no `get_info`). An OTC
+    fund's name comes from its own page."""
+    if cnmarket.is_cn(symbol):
+        try:
+            quote = cnmarket.fetch_quotes([symbol]).get(symbol)
+        except Exception:
+            quote = None
+        if quote and quote.get("name"):
+            return quote["name"]
+    code = otcfund.fund_code(symbol)
+    if code:
+        try:
+            name = otcfund.fetch_name(code)
+        except Exception:
+            name = None
+        if name:
+            return name
     import yfinance as yf
 
     info = yf.Ticker(symbol).get_info() or {}
@@ -332,20 +376,78 @@ _CRYPTO_ALIASES = {
 
 
 def resolve_symbol(text: str, base_currency: str) -> str:
-    """A user-typed instrument name -> the Yahoo symbol that prices it.
+    """A user-typed instrument name -> the symbol that prices it.
 
     Anything already shaped like a symbol is returned untouched: a pair
-    ('BTC-EUR'), a suffixed listing ('VWCE.MI') or a plain ticker all pass
-    through, so this can never hijack an equity. Only a bare crypto NAME is
-    rewritten, and into the base currency — which the caller reads from its
-    session and passes in: this module has no database to ask."""
+    ('BTC-EUR'), a suffixed listing ('VWCE.MI', '600519.SS') or a plain ticker
+    all pass through, so this can never hijack an equity. Two things are
+    rewritten:
+
+    - a bare crypto NAME, into the base currency — which the caller reads from
+      its session and passes in: this module has no database to ask;
+    - a bare NUMBER, into a mainland or HK listing (`_cn_listing`): typing
+      600519 and having to know it is "600519.SS" somewhere else is exactly
+      the friction that kept A shares out of the app."""
     raw = (text or "").strip()
-    if not raw or "-" in raw or "." in raw:
+    if not raw:
         return raw
+    if "-" in raw or "." in raw:
+        return raw
+    if raw.isdigit():
+        return _cn_listing(raw) or raw
     coin = _CRYPTO_ALIASES.get(raw.lower().replace(" ", ""))
     if not coin:
         return raw
     return f"{coin}-{base_currency.strip().upper()}"
+
+
+# What a bare 6-digit code's first digit says it is. The exchanges' own
+# numbering, read as a typing convenience and never as an identity: an
+# explicit suffix always wins (above), and a code this cannot place passes
+# through untouched. Two cases are genuinely ambiguous and are named rather
+# than hidden: 11xxxx is both Shanghai convertibles and OTC fund codes, and
+# 9xxxxx is both Shanghai B shares and some Beijing codes — a listing that
+# gets no price here can be corrected with a suffix, and the picker
+# (`lookup_symbol`) is where such a code is meant to be resolved.
+_CN_FIRST_DIGIT = {
+    "6": ".SS",   # 600/601/603/605/688: Shanghai stocks, STAR board
+    "0": ".SZ",   # 000/001/002/003: Shenzhen stocks
+    "3": ".SZ",   # 300/301: ChiNext
+    "2": ".SZ",   # 200: Shenzhen B shares
+    "5": ".SS",   # 510/511/513/515/560/588: Shanghai funds and bonds
+    "4": ".BJ",   # 430: Beijing
+    "8": ".BJ",   # 830/831/870: Beijing
+    "9": ".SS",   # 900: Shanghai B shares
+}
+
+
+def _cn_listing(digits: str) -> str | None:
+    """'600519' -> '600519.SS', '00700' -> '00700.HK', '159915' -> '159915.SZ'.
+
+    A code of at most five digits is an HK one (four typed for 00700 is
+    normal). Six digits read their market off the first digit, with the 1xxxxx
+    band split by what lives there: Shenzhen funds (15/16/18) and Shenzhen
+    convertibles (123/127/128) south, Shanghai convertibles (111/113/115/118)
+    north — and the 110 band left ALONE, because it is where a Shanghai
+    convertible (110079) and an OTC fund (110011) share their first three
+    digits and nothing here can tell them apart. Everything unmapped returns
+    None and stays as typed."""
+    if len(digits) <= 5:
+        return digits.zfill(5) + ".HK"
+    if len(digits) != 6:
+        return None
+    head = digits[:3]
+    if head in ("159", "160", "161", "162", "163", "164", "165", "166", "167",
+                "168", "169", "184"):
+        return digits + ".SZ"
+    if head in ("111", "113", "115", "118"):
+        return digits + ".SS"
+    if head in ("123", "127", "128"):
+        return digits + ".SZ"
+    if head.startswith("1"):
+        return None  # 110: convertible or OTC fund, and not ours to guess
+    suffix = _CN_FIRST_DIGIT.get(digits[0])
+    return digits + suffix if suffix else None
 
 
 def _usd_pair(symbol: str) -> str | None:
@@ -408,20 +510,57 @@ def _fetch_recent_closes(symbols: list[str]) -> dict[str, tuple[float, str]]:
 
     The close, not Yahoo's dividend-adjusted one (`auto_adjust=False`, see
     `_fetch_close_window`). The two gave the same last close on all 18 that
-    day; the adjusted one is lower for any day a dividend has gone ex since."""
+    day; the adjusted one is lower for any day a dividend has gone ex since.
+
+    The home-market half of the batch goes to `cnmarket` and only its
+    remainder is downloaded: the mainland sources answer A shares and HK
+    natively, and a Yahoo that does not answer from Beijing must not leave a
+    home listing unpriced. Whatever nobody priced stays absent, and a download
+    that fails outright raises only when NOTHING answered — a batch with a
+    source's prices in it is not a failure the caller should report as one."""
+    home = [s for s in symbols if cnmarket.is_cn(s)]
+    out: dict[str, tuple[float, str]] = {}
+    if home:
+        try:
+            for sym, quote in cnmarket.fetch_quotes(home).items():
+                out[sym] = (quote["price"], quote["as_of"])
+        except Exception:
+            pass  # the download below prices them, or they stay unpriced
+    # An OTC fund is priced at its latest published NAV, which is the day's
+    # valuation rather than a trade: exactly what "worth now" means for
+    # something that is bought and redeemed at a price computed after close.
+    today = datetime.date.fromisoformat(dated.today())
+    for sym in symbols:
+        code = otcfund.fund_code(sym)
+        if code is None or sym in out:
+            continue
+        try:
+            rows = otcfund.fetch_nav(code, today - datetime.timedelta(days=10), today)
+        except Exception:
+            continue
+        priced = [r for r in rows if r["nav"] is not None]
+        if priced:
+            out[sym] = (priced[-1]["nav"], priced[-1]["date"])
+    missing = [s for s in symbols if s not in out]
+    if not missing:
+        return out
     import yfinance as yf
 
-    data = yf.download(
-        tickers=" ".join(symbols),
-        period="5d",
-        group_by="ticker",
-        progress=False,
-        auto_adjust=False,
-    )
-    out: dict[str, tuple[float, str]] = {}
+    try:
+        data = yf.download(
+            tickers=" ".join(missing),
+            period="5d",
+            group_by="ticker",
+            progress=False,
+            auto_adjust=False,
+        )
+    except Exception:
+        if not out:
+            raise
+        return out
     if data is None or len(data) == 0:
         return out
-    for sym in symbols:
+    for sym in missing:
         try:
             # Multi-ticker downloads have per-symbol column groups; a
             # single-ticker download may return a flat frame.
@@ -461,7 +600,21 @@ def _fetch_currency(symbol: str) -> str | None:
     and a dividend Yahoo names is read the same way (`_read_dividend`). This
     upper-cased it until brief AK: measured 2026-10-08, Yahoo names VOD.L and
     ISF.L "GBp" and this returned "GBP" for both, so a pence listing whose
-    currency the cache learnt here would be converted as pounds."""
+    currency the cache learnt here would be converted as pounds.
+
+    A home-market listing takes its currency from the home quote, which names
+    it in the same answer as the price. An OTC fund's NAV is yuan whatever the
+    fund holds (a QDII converts its overseas assets into CNY per share), and
+    there is nothing to ask."""
+    if otcfund.is_fund(symbol):
+        return "CNY"
+    if cnmarket.is_cn(symbol):
+        try:
+            quote = cnmarket.fetch_quotes([symbol]).get(symbol)
+        except Exception:
+            quote = None
+        if quote and quote.get("currency"):
+            return quote["currency"]
     import yfinance as yf
 
     fast = yf.Ticker(symbol).fast_info
@@ -539,6 +692,16 @@ def _dividend_range(since: datetime.date, today: datetime.date) -> str:
     return "max"
 
 
+def _period_start(period: str) -> datetime.date:
+    """How far back one of `get_dividends`'s Yahoo ranges reaches, as the day
+    it starts on: what the OTC fund report is bounded by, since that report
+    pages by date rather than by Yahoo's words. "max" (or anything unnamed)
+    is the whole history."""
+    today = datetime.date.fromisoformat(dated.today())
+    days = dict(_DIVIDEND_RANGES).get(period)
+    return today - datetime.timedelta(days=days) if days else datetime.date(1990, 1, 1)
+
+
 def _read_dividend(day: str, amount, named) -> dict | None:
     """One event of Yahoo's answer, read on its own: {"date", "dps"}, with
     "currency" when Yahoo names one; {"date", "unreadable"} when it cannot be
@@ -549,7 +712,7 @@ def _read_dividend(day: str, amount, named) -> dict | None:
     listing named one (52 tickers, Vietnam included, the case yfinance's own
     comment names), and the amounts are converted into the listing's currency:
     the Vanguard All-World fund pays in dollars, and its dividend of 2026-09-17
-    in dollars (VWRD.L) over the same in euros (VWRL.MI) is 1.1486, the ECB's
+    in dollars (VWRD.L) over the same in euros (VWRL.MI) is 1.1486, the feed's
     EUR/USD that day 1.1481. A named one is kept as written, case included,
     because GBp is pence and GBP pounds."""
     try:
@@ -627,7 +790,43 @@ def _fetch_dividends(symbol: str, period: str = "max") -> DividendWindow:
     before it); and it drops a currency Yahoo names (read in yfinance 1.4.1).
     An ex-date decides which units earned a dividend, the rate it is converted
     at and whether it is already recorded, so the dividends come from here and
-    the price from the batch."""
+    the price from the batch.
+
+    A mainland listing's dividends come from the mainland report instead:
+    every IMPLEMENTED cash dividend, per share and gross
+    (`cnmarket.parse_dividends` names its two readings). HK stays on Yahoo —
+    Eastmoney's report is the A market's own — and so does everything else. A
+    home fetch that fails falls through to Yahoo rather than failing the
+    ticker: one source being down is not an answer about the stock, and the
+    row would otherwise be a skip at every start."""
+    code = cnmarket.tencent_code(symbol)
+    if code and code.startswith(("sh", "sz")):
+        try:
+            rows = cnmarket.fetch_dividends(symbol)
+        except Exception:
+            rows = None
+        if rows is not None:
+            events = (_read_dividend(row["date"], row["dps"], None) for row in rows)
+            return DividendWindow(
+                answered=True, dividends=[e for e in events if e is not None]
+            )
+    fund = otcfund.fund_code(symbol)
+    if fund:
+        # The fund's own report names its distributions (`otcfund._distribution`)
+        # on the valuation rows, which is the same window as its NAVs.
+        try:
+            rows = otcfund.fetch_nav(
+                fund, _period_start(period), datetime.date.fromisoformat(dated.today())
+            )
+        except Exception:
+            rows = None
+        if rows is not None:
+            events = (
+                _read_dividend(r["date"], r["dps"], None) for r in rows if r["dps"]
+            )
+            return DividendWindow(
+                answered=True, dividends=[e for e in events if e is not None]
+            )
     import yfinance as yf
 
     dividends = yf.Ticker(symbol).get_dividends(period=period)

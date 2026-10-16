@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type ReactNode,
   type Ref,
 } from "react";
 import { getPortfolio, type Portfolio as PortfolioData } from "../api/portfolio";
@@ -38,7 +39,7 @@ import { prefillNote } from "./watchItem";
 import type { WatchlistItem } from "../api/watchlist";
 import { Row, RowsOrEmpty, Section, apiError, btnClass, cardClass, inputClass, locale, money, todayISO, CURRENCY_LIST } from "./ui";
 import { dividendWord } from "./dividendLine";
-import { ageWords } from "./calendarDays";
+import { daysAgo } from "./calendarDays";
 import { avgCostTitle, plTitle } from "./costWords";
 import {
   SHOWN,
@@ -51,6 +52,8 @@ import {
 import { deleteQuestion } from "./ledgerDelete";
 import { marks, refusal, transaction } from "./required";
 import type { Focus } from "../nav";
+import { useT } from "../i18n/useT.ts";
+import { t, tOpt, type RichPart } from "../i18n/t.ts";
 
 const pctFmt = new Intl.NumberFormat(locale, {
   style: "percent",
@@ -62,6 +65,29 @@ const pctFmt = new Intl.NumberFormat(locale, {
 function toneClass(delta: number | null): string {
   if (delta == null || delta === 0) return "text-ink-soft";
   return delta > 0 ? "text-up" : "text-down";
+}
+
+/** `tRich`'s parts as markup: `**strong**` takes `strongClass`, `*em*` an
+    emphasis. The marks live in the catalogue so each language can place them;
+    the classes live here because they are this page's tones, not words. */
+function Rich({
+  parts,
+  strongClass = "font-semibold text-ink",
+}: {
+  parts: RichPart[];
+  strongClass?: string;
+}): ReactNode {
+  return parts.map((p, i) =>
+    p.kind === "strong" ? (
+      <span key={i} className={strongClass}>
+        {p.value}
+      </span>
+    ) : p.kind === "em" ? (
+      <em key={i}>{p.value}</em>
+    ) : (
+      <span key={i}>{p.value}</span>
+    ),
+  );
 }
 
 /* The declared tax estimate, BESIDE the totals and never inside one.
@@ -78,6 +104,7 @@ function toneClass(delta: number | null): string {
    bases waiting on it — a state that is NOT zero tax and must never look like
    it. */
 function TaxEstimatePanel({ est, baseCurrency }: { est: TaxEstimate; baseCurrency: string }) {
+  const tr = useT();
   // The estimate travels inside the portfolio payload, in its base.
   const inBase = money(baseCurrency);
   /* A realized LOSS counts as something to say, even though it is not a base:
@@ -98,26 +125,27 @@ function TaxEstimatePanel({ est, baseCurrency }: { est: TaxEstimate; baseCurrenc
     return (
       <div className={cardClass + " bg-tint p-4 text-sm"}>
         <p className="text-ink">
-          No tax rate set, so no estimate is shown here.
+          {tr("portfolio.taxNoRate")}
         </p>
         <p className="mt-1 text-ink-soft">
           {est.taxable_gain > 0 && (
-            <>There is a realized gain of {inBase.format(est.taxable_gain)}. </>
+            <>{tr("portfolio.taxGain", { amount: inBase.format(est.taxable_gain) })}</>
           )}
           {est.realized_gain < 0 && (
             <>
-              The realized result is a loss of{" "}
-              {inBase.format(-est.realized_gain)}, which no rate would be applied
-              to anyway.{" "}
+              {tr("portfolio.taxLoss", {
+                amount: inBase.format(-est.realized_gain),
+              })}
             </>
           )}
           {est.dividends_gross_estimated > 0 && (
             <>
-              {inBase.format(est.dividends_gross_estimated)} of dividends still
-              show the market&rsquo;s gross figure.{" "}
+              {tr("portfolio.taxGrossDividends", {
+                amount: inBase.format(est.dividends_gross_estimated),
+              })}
             </>
           )}
-          Set your rate in Profile &rarr; Tax.
+          {tr("portfolio.taxSetRate")}
         </p>
       </div>
     );
@@ -127,17 +155,21 @@ function TaxEstimatePanel({ est, baseCurrency }: { est: TaxEstimate; baseCurrenc
     <div className={cardClass + " bg-tint p-4"}>
       <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
         <span className="text-[0.65rem] uppercase tracking-[0.12em] text-olive">
-          Estimated tax{est.country ? ` · ${est.country}` : ""}
+          {tr("portfolio.taxTitle")}{est.country ? ` · ${est.country}` : ""}
         </span>
         {est.total != null ? (
           <span className="text-sm text-ink-soft">
-            <span className="font-semibold text-ink">{inBase.format(est.total)}</span>{" "}
-            estimated, and counted in none of the totals above
+            <Rich
+              parts={tr.rich("portfolio.taxTotal", {
+                amount: inBase.format(est.total),
+              })}
+            />
           </span>
         ) : (
           <span className="text-sm text-warn">
-            No total: you have not set a rate for {est.missing_rates.join(" or ")},
-            and adding up only the half that can be worked out would understate it.
+            {tr("portfolio.taxNoTotal", {
+              rates: est.missing_rates.join(" or "),
+            })}
           </span>
         )}
       </div>
@@ -151,34 +183,39 @@ function TaxEstimatePanel({ est, baseCurrency }: { est: TaxEstimate; baseCurrenc
             EUR 0 at 26% = EUR 0" is a true row that says nothing. */}
         {est.capital_gains_tax != null && est.realized_gain < 0 && (
           <p>
-            Realized result is a loss of{" "}
-            <span className="font-semibold text-down">
-              {inBase.format(-est.realized_gain)}
-            </span>{" "}
-            (nothing estimated on it)
+            <Rich
+              strongClass="font-semibold text-down"
+              parts={tr.rich("portfolio.taxLossLine", {
+                amount: inBase.format(-est.realized_gain),
+              })}
+            />
           </p>
         )}
         {est.capital_gains_tax != null && est.realized_gain > 0 && (
           <p>
-            Realized gain {inBase.format(est.taxable_gain)} at{" "}
-            <span className="text-ink">{est.capital_gains_rate}%</span> ={" "}
-            <span className="font-semibold text-ink">
-              {inBase.format(est.capital_gains_tax)}
-            </span>
+            <Rich
+              parts={tr.rich("portfolio.taxGainLine", {
+                gain: inBase.format(est.taxable_gain),
+                rate: est.capital_gains_rate,
+                tax: inBase.format(est.capital_gains_tax),
+              })}
+            />
           </p>
         )}
         {est.dividend_withholding != null && est.dividends_gross_estimated > 0 && (
           <p>
-            Gross dividends {inBase.format(est.dividends_gross_estimated)} at{" "}
-            <span className="text-ink">{est.dividend_withholding_rate}%</span> ={" "}
-            <span className="font-semibold text-ink">
-              {inBase.format(est.dividend_withholding)}
-            </span>
+            <Rich
+              parts={tr.rich("portfolio.taxDividendLine", {
+                gross: inBase.format(est.dividends_gross_estimated),
+                rate: est.dividend_withholding_rate,
+                tax: inBase.format(est.dividend_withholding),
+              })}
+            />
             {est.dividends_recorded_net > 0 && (
               <span className="text-ink-faint">
-                {" "}
-                · the {inBase.format(est.dividends_recorded_net)} you corrected by
-                hand is already net and is left alone
+                {tr("portfolio.taxNetNote", {
+                  net: inBase.format(est.dividends_recorded_net),
+                })}
               </span>
             )}
           </p>
@@ -199,6 +236,13 @@ function TaxEstimatePanel({ est, baseCurrency }: { est: TaxEstimate; baseCurrenc
 
 function fmtDate(iso: string | null): string {
   return iso ? new Date(iso + "T00:00:00").toLocaleDateString(locale) : "";
+}
+
+/** How old a date is, in the catalogue's words: "today", "1 day ago". The
+    day count comes from `calendarDays`, which counts and does not speak. */
+function agePhrase(iso: string): string {
+  const n = daysAgo(iso);
+  return n <= 0 ? t("portfolio.ageToday") : t("portfolio.ageDays", { n, count: n });
 }
 
 // A position is only worth flagging once it has had time to drift. Below this
@@ -238,8 +282,8 @@ function staleNote(r: PortfolioData["rows"][number]): string | null {
   if (days == null || days < STALE_AFTER_DAYS || !r.observed_on) return null;
   const when = fmtDate(r.observed_on);
   return r.market_value == null
-    ? `value from ${when} (${days} days): nothing can price this, only you can refresh it`
-    : `priced today, but ${days} days since anyone confirmed you hold this many (${when})`;
+    ? t("portfolio.staleUnpriceable", { when, days })
+    : t("portfolio.staleQty", { when, days });
 }
 
 export default function Portfolio({
@@ -254,6 +298,7 @@ export default function Portfolio({
   focus: Focus | null;
   onFocused: () => void;
 }) {
+  const tr = useT();
   const [data, setData] = useState<PortfolioData | null>(null);
   const [txs, setTxs] = useState<Transaction[]>([]);
   const [institutions, setInstitutions] = useState<Institution[]>([]);
@@ -299,7 +344,7 @@ export default function Portfolio({
       setAnchors(a);
       setListing(l);
     } catch (err) {
-      setError(apiError(err, "Could not load the portfolio. Is the backend running on :8000?"));
+      setError(apiError(err, tr("portfolio.loadError")));
     } finally {
       setLoading(false);
       setPricing(false);
@@ -339,7 +384,7 @@ export default function Portfolio({
     window.setTimeout(() => growing.disconnect(), 2500);
   }, [focus, loading, data, onFocused]);
 
-  if (loading) return <p className="text-ink-soft">Loading…</p>;
+  if (loading) return <p className="text-ink-soft">{tr("common.loading")}</p>;
   if (error) return <p className="text-down">{error}</p>;
   if (!data) return null;
 
@@ -361,20 +406,24 @@ export default function Portfolio({
   return (
     <div className="space-y-10">
     <Section
-      title="Portfolio"
-      hint="Your investment positions (latest situation of each institution). Refresh to pull live market prices and see profit/loss vs the recorded value."
+      title={tr("portfolio.title")}
+      hint={tr("portfolio.hint")}
     >
       <div className="flex flex-wrap items-center gap-3">
         <button onClick={() => load(true)} disabled={pricing} className={btnClass}>
-          {pricing ? "Pricing…" : "↻ Refresh market prices"}
+          {pricing ? tr("portfolio.pricing") : tr("portfolio.refresh")}
         </button>
         {data.priced && (
           <span className="text-sm text-ink-soft">
-            Market{" "}
-            <span className="font-semibold text-ink">
-              {data.total_market != null ? money(data.base_currency).format(data.total_market) : "unknown"}
-            </span>{" "}
-            vs recorded {money(data.base_currency).format(data.total_book)}
+            <Rich
+              parts={tr.rich("portfolio.marketVsRecorded", {
+                market:
+                  data.total_market != null
+                    ? money(data.base_currency).format(data.total_market)
+                    : tr("portfolio.unknown"),
+                book: money(data.base_currency).format(data.total_book),
+              })}
+            />
             {anyDelta && (
               <span
                 className={"ml-2 font-semibold " + toneClass(pricedDelta)}
@@ -382,7 +431,7 @@ export default function Portfolio({
                 {pricedDelta >= 0 ? "+" : ""}
                 {money(data.base_currency).format(pricedDelta)}
                 <span className="ml-1 text-xs font-normal text-ink-faint">
-                  on priced rows
+                  {tr("portfolio.onPricedRows")}
                 </span>
               </span>
             )}
@@ -393,12 +442,18 @@ export default function Portfolio({
             read as a share of a number smaller than itself. */}
         {data.priced && carried > 0 && (
           <span className="text-xs text-ink-faint">
-            {money(data.base_currency).format(carried)} of that total is what you last recorded, not priced
+            {tr("portfolio.carriedOfTotal", {
+              amount: money(data.base_currency).format(carried),
+            })}
           </span>
         )}
         {!data.priced && (
           <span className="text-sm text-ink-soft">
-            Recorded total <span className="font-semibold text-ink">{money(data.base_currency).format(data.total_book)}</span>
+            <Rich
+              parts={tr.rich("portfolio.recordedTotal", {
+                book: money(data.base_currency).format(data.total_book),
+              })}
+            />
           </span>
         )}
         {(data.prices_as_of || data.fx_as_of) && (
@@ -414,26 +469,36 @@ export default function Portfolio({
                 old when it was. */}
             {data.prices_as_of && (
               <>
-                prices as of {fmtDate(data.prices_as_of)} ({ageWords(data.prices_as_of)})
+                {tr("portfolio.pricesAsOf", {
+                  date: fmtDate(data.prices_as_of),
+                  age: agePhrase(data.prices_as_of),
+                })}
               </>
             )}
             {data.prices_as_of && data.fx_as_of && " · "}
-            {data.fx_as_of && <>FX ECB {fmtDate(data.fx_as_of)}</>}
+            {data.fx_as_of && (
+              <>{tr("portfolio.fxAsOf", { date: fmtDate(data.fx_as_of) })}</>
+            )}
           </span>
         )}
         {(data.total_realized !== 0 || data.total_dividends !== 0) && (
           <span className="text-sm text-ink-soft">
             {data.total_realized !== 0 && (
-              <>
-                Realized P/L{" "}
-                <span className={"font-semibold " + toneClass(data.total_realized)}>
-                  {data.total_realized >= 0 ? "+" : ""}
-                  {money(data.base_currency).format(data.total_realized)}
-                </span>
-              </>
+              <Rich
+                strongClass={"font-semibold " + toneClass(data.total_realized)}
+                parts={tr.rich("portfolio.realizedPL", {
+                  delta:
+                    (data.total_realized >= 0 ? "+" : "") +
+                    money(data.base_currency).format(data.total_realized),
+                })}
+              />
             )}
             {data.total_dividends !== 0 && (
-              <> · dividends collected {money(data.base_currency).format(data.total_dividends)}</>
+              <>
+                {tr("portfolio.dividendsCollected", {
+                  amount: money(data.base_currency).format(data.total_dividends),
+                })}
+              </>
             )}
           </span>
         )}
@@ -452,9 +517,8 @@ export default function Portfolio({
       <UnconvertedNotice items={data.unconverted ?? []} baseCurrency={data.base_currency} />
 
       {data.rows.length === 0 ? (
-        <EmptyState title="Nothing invested yet">
-          Add an institution in Records → Wealth, then a dated situation and the holdings it
-          contains. Give each one a ticker and this table fills in on its own.
+        <EmptyState title={tr("portfolio.emptyTitle")}>
+          {tr("portfolio.emptyBody")}
         </EmptyState>
       ) : (
         // Dense view: the ruled-ledger treatment — alternating row tint,
@@ -464,14 +528,14 @@ export default function Portfolio({
           <table className="w-full border-collapse text-left text-sm [&_td:not(:first-child)]:border-l [&_td:not(:first-child)]:border-hair [&_tbody_tr:nth-child(even)]:bg-tint">
             <thead>
               <tr className="border-b border-rule text-[0.65rem] uppercase tracking-[0.12em] text-olive">
-                <th className="px-4 py-2 font-semibold">Asset</th>
-                <th className="px-4 py-2 font-semibold">Institution</th>
-                <th className="px-4 py-2 text-right font-semibold">Qty</th>
-                <th className="px-4 py-2 text-right font-semibold">Avg cost</th>
-                <th className="px-4 py-2 text-right font-semibold">Recorded</th>
-                <th className="px-4 py-2 text-right font-semibold">Live price</th>
-                <th className="px-4 py-2 text-right font-semibold">Worth now</th>
-                <th className="px-4 py-2 text-right font-semibold">P/L vs recorded</th>
+                <th className="px-4 py-2 font-semibold">{tr("portfolio.colAsset")}</th>
+                <th className="px-4 py-2 font-semibold">{tr("portfolio.colInstitution")}</th>
+                <th className="px-4 py-2 text-right font-semibold">{tr("portfolio.colQty")}</th>
+                <th className="px-4 py-2 text-right font-semibold">{tr("portfolio.colAvgCost")}</th>
+                <th className="px-4 py-2 text-right font-semibold">{tr("portfolio.colRecorded")}</th>
+                <th className="px-4 py-2 text-right font-semibold">{tr("portfolio.colLivePrice")}</th>
+                <th className="px-4 py-2 text-right font-semibold">{tr("portfolio.colWorthNow")}</th>
+                <th className="px-4 py-2 text-right font-semibold">{tr("portfolio.colPL")}</th>
               </tr>
             </thead>
             <tbody>
@@ -486,7 +550,7 @@ export default function Portfolio({
                     </div>
                     {r.currency_note && (
                       <div className="mt-0.5 text-[0.65rem] text-warn">
-                        ⚠ {r.currency_note}. The listing wins; fix the field in Records
+                        {tr("portfolio.currencyNote", { note: r.currency_note })}
                       </div>
                     )}
                     {/* Two different things go stale, and saying "old" flattens
@@ -498,8 +562,7 @@ export default function Portfolio({
                     )}
                     {r.closed_on && (
                       <div className="mt-0.5 text-[0.65rem] text-ink-soft">
-                        disposed of on {fmtDate(r.closed_on)}, kept here so the exit
-                        is visible
+                        {tr("portfolio.disposedOn", { date: fmtDate(r.closed_on) })}
                       </div>
                     )}
                   </td>
@@ -512,37 +575,37 @@ export default function Portfolio({
                     {r.institution ?? (
                       <span
                         className="text-ink-faint"
-                        title="Held at no institution: no situation can photograph it and nothing can confirm it is still there. PAC targets that name no institution create these. Give the ledger row below an institution to attach it."
+                        title={tr("portfolio.noInstitutionTitle")}
                       >
-                        no institution
+                        {tr("portfolio.noInstitution")}
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-right text-ink-soft">{r.quantity ?? "n/a"}</td>
+                  <td className="px-4 py-2.5 text-right text-ink-soft">{r.quantity ?? tr("common.na")}</td>
                   <td
                     className="px-4 py-2.5 text-right text-ink-soft"
                     title={avgCostTitle(r)}
                   >
                     {r.avg_cost == null ? (
-                      "n/a"
+                      tr("common.na")
                     ) : r.cost_known ? (
                       <>
                         {money(data.base_currency).format(r.avg_cost)}
                         {r.cost_estimated && (
-                          <span className="ml-1 text-[0.65rem] text-warn">est.</span>
+                          <span className="ml-1 text-[0.65rem] text-warn">{tr("portfolio.est")}</span>
                         )}
                       </>
                     ) : (
-                      <span className="text-ink-faint">cost unknown</span>
+                      <span className="text-ink-faint">{tr("portfolio.costUnknown")}</span>
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-right text-ink">{money(data.base_currency).format(r.book_value)}</td>
                   <td
                     className="px-4 py-2.5 text-right text-ink-soft"
-                    title={r.as_of ? `Market close of ${fmtDate(r.as_of)}` : undefined}
+                    title={r.as_of ? tr("portfolio.marketCloseOf", { date: fmtDate(r.as_of) }) : undefined}
                   >
                     {r.live_price == null
-                      ? "unknown"
+                      ? tr("portfolio.unknown")
                       : r.currency && r.currency !== data.base_currency
                         ? `${r.live_price.toLocaleString(locale)} ${r.currency}`
                         : money(data.base_currency).format(r.live_price)}
@@ -567,7 +630,7 @@ export default function Portfolio({
                     title={
                       r.market_value != null
                         ? undefined
-                        : "Nothing can price this today: the last value recorded for this position, carried forward"
+                        : tr("portfolio.worthCarriedTitle")
                     }
                   >
                     {money(data.base_currency).format(r.market_value ?? r.observed_value)}
@@ -588,12 +651,12 @@ export default function Portfolio({
                         )}
                         {!r.cost_known && (
                           <div className="text-[0.65rem] font-normal text-ink-faint">
-                            since situation
+                            {tr("portfolio.sinceSituation")}
                           </div>
                         )}
                       </>
                     ) : (
-                      "unknown"
+                      tr("portfolio.unknown")
                     )}
                   </td>
                 </tr>
@@ -604,15 +667,7 @@ export default function Portfolio({
       )}
 
       <p className="max-w-[80ch] text-xs text-ink-faint">
-        <em>Recorded</em> is what a position cost: the purchase price where you entered one,
-        otherwise the value your last situation recorded (and then <em>Avg cost</em> says
-        "cost unknown", because that is not a price you paid). <em>Worth now</em> is the other
-        question: a market price where the market can give one, the last value recorded for
-        the position where it cannot. <em>P/L vs recorded</em> compares the two only when a real
-        quote priced the row. On a row nothing can price, the difference between the two
-        columns is there to read, but a month-old statement is not a market and this app will
-        not colour it green. Refreshing a price no longer overwrites a situation (that used to
-        force P/L to zero): to record today's values, record a new situation.
+        <Rich parts={tr.rich("portfolio.tableNote")} />
       </p>
     </Section>
 
@@ -675,6 +730,7 @@ function AllocationList({
   items: { name: string; pct: number }[];
   noData?: number;
 }) {
+  const tr = useT();
   if (items.length === 0) return null;
   return (
     <div className={cardClass + " p-4"}>
@@ -693,7 +749,7 @@ function AllocationList({
             data does not have. */}
         {noData != null && noData > 0 && (
           <div className="grid grid-cols-[8rem_1fr_3.5rem] items-center gap-2 border-t border-hair pt-2 text-sm">
-            <span className="truncate text-ink-faint">No data</span>
+            <span className="truncate text-ink-faint">{tr("portfolio.noData")}</span>
             <div
               className="h-2 w-full rounded-full"
               style={{
@@ -714,6 +770,7 @@ function AllocationList({
 /** Asset class x region, shaded by weight. A grid of magnitudes takes one hue
     with more-is-darker, never a different colour per cell. */
 function ExposureMatrix({ cells }: { cells: MatrixCell[] }) {
+  const tr = useT();
   if (cells.length === 0) return null;
   const classes = [...new Set(cells.map((c) => c.asset_class))];
   const regionTotals = new Map<string, number>();
@@ -726,12 +783,12 @@ function ExposureMatrix({ cells }: { cells: MatrixCell[] }) {
   return (
     <div className={cardClass + " overflow-x-auto p-4"}>
       <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-soft">
-        Asset class × region (% of portfolio)
+        {tr("portfolio.matrixTitle")}
       </h4>
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="text-[0.65rem] uppercase tracking-[0.1em] text-ink-soft">
-            <th className="py-1 pr-3 text-left font-medium">Class</th>
+            <th className="py-1 pr-3 text-left font-medium">{tr("portfolio.class")}</th>
             {regions.map((r) => (
               <th key={r} className="px-2 py-1 text-right font-medium">{r}</th>
             ))}
@@ -765,6 +822,7 @@ function ExposureMatrix({ cells }: { cells: MatrixCell[] }) {
 }
 
 function LookThroughSection() {
+  const tr = useT();
   const [data, setData] = useState<PortfolioComposition | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -775,7 +833,7 @@ function LookThroughSection() {
     try {
       setData(await getPortfolioComposition(refresh));
     } catch (err) {
-      setError(apiError(err, "Could not load the composition (sources may be unreachable)."));
+      setError(apiError(err, tr("portfolio.compositionError")));
     } finally {
       setLoading(false);
     }
@@ -787,29 +845,31 @@ function LookThroughSection() {
 
   return (
     <Section
-      title="Look-through (real exposure)"
-      note="From the issuers’ own files where they publish them, justETF and Yahoo otherwise. Cached 15 days."
+      title={tr("portfolio.lookTitle")}
+      note={tr("portfolio.lookNote")}
       explain={{
-        question: "What is the look-through?",
-        text: "What is really inside your funds: countries, sectors, and the issuers you hold through more than one of them.",
+        question: tr("portfolio.lookExplainQ"),
+        text: tr("portfolio.lookExplainT"),
       }}
     >
       <div className="flex flex-wrap items-center gap-3">
         <button onClick={() => load(true)} disabled={loading} className={btnClass}>
-          {loading ? "Fetching…" : "↻ Update composition"}
+          {loading ? tr("portfolio.fetching") : tr("portfolio.updateComposition")}
         </button>
         {data && (
           <span className="text-sm text-ink-soft">
-            Coverage{" "}
-            <span className="font-semibold text-ink">
-              {data.coverage_pct.toFixed(1)}%
-            </span>{" "}
-            of the portfolio decomposed
+            <Rich
+              parts={tr.rich("portfolio.coverage", {
+                pct: `${data.coverage_pct.toFixed(1)}%`,
+              })}
+            />
           </span>
         )}
       </div>
       {error && <p className="text-down">{error}</p>}
-      {loading && !data && <p className="text-ink-soft">Loading composition…</p>}
+      {loading && !data && (
+        <p className="text-ink-soft">{tr("portfolio.loadingComposition")}</p>
+      )}
 
       {data && (
         <>
@@ -819,10 +879,12 @@ function LookThroughSection() {
           <div className={cardClass + " p-4"}>
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
               <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
-                How much of the portfolio we can see inside
+                {tr("portfolio.coverageTitle")}
               </h4>
               <span className="text-sm tabular-nums text-ink">
-                {data.coverage_pct.toFixed(1)}% decomposed
+                {tr("portfolio.decomposedPct", {
+                  pct: `${data.coverage_pct.toFixed(1)}%`,
+                })}
               </span>
             </div>
             <div className="flex h-3 w-full overflow-hidden rounded-full bg-tint">
@@ -836,8 +898,7 @@ function LookThroughSection() {
               />
             </div>
             <p className="mt-2 text-xs text-ink-faint">
-              Percentages below are shares of the whole portfolio, so they add up to the
-              decomposed part, not to 100%.
+              {tr("portfolio.coverageNote")}
             </p>
 
             {/* What the backend knows about the shape of its own answer: an
@@ -856,7 +917,7 @@ function LookThroughSection() {
             <div className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-2">
               <div>
                 <h5 className="mb-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-olive">
-                  Looked inside
+                  {tr("portfolio.lookedInside")}
                 </h5>
                 <ul className="space-y-1 text-sm">
                   {data.rows
@@ -873,13 +934,13 @@ function LookThroughSection() {
                       </li>
                     ))}
                   {data.rows.every((r) => !r.decomposed) && (
-                    <li className="text-ink-faint">Nothing yet.</li>
+                    <li className="text-ink-faint">{tr("portfolio.nothingYet")}</li>
                   )}
                 </ul>
               </div>
               <div>
                 <h5 className="mb-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-ink-soft">
-                  Not decomposed
+                  {tr("portfolio.notDecomposed")}
                 </h5>
                 <ul className="space-y-1 text-sm">
                   {data.rows
@@ -895,12 +956,11 @@ function LookThroughSection() {
                       </li>
                     ))}
                   {data.rows.every((r) => r.decomposed) && (
-                    <li className="text-ink-faint">Everything is covered.</li>
+                    <li className="text-ink-faint">{tr("portfolio.everythingCovered")}</li>
                   )}
                 </ul>
                 <p className="mt-2 text-xs text-ink-faint">
-                  Single stocks and crypto have nothing inside them to look at. A fund listed
-                  here usually just needs its ISIN: add it to the holding in Records → Wealth.
+                  {tr("portfolio.singleStocksNote")}
                 </p>
               </div>
             </div>
@@ -908,21 +968,21 @@ function LookThroughSection() {
 
           <div className="grid gap-4 md:grid-cols-2">
             <AllocationList
-              title="Countries (% of portfolio)"
+              title={tr("portfolio.countries")}
               items={data.countries}
               noData={data.undecomposed_pct}
             />
             <AllocationList
-              title="Sectors (% of portfolio)"
+              title={tr("portfolio.sectors")}
               items={data.sectors}
               noData={data.undecomposed_pct}
             />
             <AllocationList
-              title="Issuers (% of portfolio)"
+              title={tr("portfolio.issuers")}
               items={data.companies ?? []}
             />
             <AllocationList
-              title="Currency exposure (% of portfolio)"
+              title={tr("portfolio.currencyExposure")}
               items={data.currencies ?? []}
               noData={data.undecomposed_pct}
             />
@@ -931,30 +991,28 @@ function LookThroughSection() {
           <ExposureMatrix cells={data.matrix ?? []} />
 
           <p className="text-xs text-ink-faint">
-            Currency exposure follows the country each company belongs to, not where it earns
-            its revenue, and ignores share-class hedging: a EUR-hedged fund still shows the
-            currencies of what it holds.
+            {tr("portfolio.currencyMethodNote")}
           </p>
 
           {data.overlap.length > 0 && (
             <div className={cardClass + " p-4"}>
               <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
-                Overlap: same stock inside 2+ funds
+                {tr("portfolio.overlapTitle")}
               </h4>
               {/* Say what this is measured on: the sources publish a top-10 per
                   fund, so a stock held by both but ranked 11th in one of them is
                   invisible here. This list is a floor, not the whole truth. */}
               <p className="mb-3 mt-1 text-xs text-ink-faint">
-                Complete for funds resolved from their issuer's own holdings file; for funds
-                covered by a third party it only sees the published top holdings, so the real
-                overlap is larger there.
+                {tr("portfolio.overlapNote")}
               </p>
               <ul className="space-y-1.5 text-sm">
                 {data.overlap.slice(0, 10).map((o) => (
                   <li key={o.name} className="flex items-baseline justify-between gap-3">
                     <span className="text-ink">
                       {o.name}
-                      <span className="ml-2 text-xs text-ink-faint">via {o.funds.join(", ")}</span>
+                      <span className="ml-2 text-xs text-ink-faint">
+                        {tr("portfolio.via", { funds: o.funds.join(", ") })}
+                      </span>
                     </span>
                     <span className="tabular-nums font-medium text-ink">{o.pct.toFixed(2)}%</span>
                   </li>
@@ -987,8 +1045,10 @@ const ADD_INSTITUTION = "__add__";
    what the reader is about to spend, and rounding both sides hides exactly the
    answer they came for. */
 function cashNote(p: CashPosition | undefined): string {
-  if (!p || p.anchor_date == null) return "no cash on record";
-  return `${money(p.base_currency, "cents").format(p.projected)} available`;
+  if (!p || p.anchor_date == null) return t("portfolio.noCash");
+  return t("portfolio.cashAvailable", {
+    amount: money(p.base_currency, "cents").format(p.projected),
+  });
 }
 
 function BuysSection({
@@ -1026,6 +1086,7 @@ function BuysSection({
   /** How a watchlist row reaches this form. See `BuyForm`. */
   ref?: Ref<BuyForm>;
 }) {
+  const tr = useT();
   const [editId, setEditId] = useState<number | null>(null);
   const [kind, setKind] = useState("buy");
   const [date, setDate] = useState(todayISO());
@@ -1041,7 +1102,7 @@ function BuysSection({
      reader's choice once they made one (null until then) and otherwise the
      proposal worked out below. `debit` is that money when the two differ and
      the reader has the figure from their statement; left blank, the backend
-     works it out at the ECB rate of the entry's date and says which day. */
+     works it out at the reference rate of the entry's date and says which day. */
   const [priceCurrencyChoice, setPriceCurrencyChoice] = useState<string | null>(null);
   const [currencyChoice, setCurrencyChoice] = useState<string | null>(null);
   // Listing currencies a dated quote taught this form after the page loaded.
@@ -1071,7 +1132,7 @@ function BuysSection({
      `.filter(Boolean)` removed the undefined — so the same row looked like it
      had a place in one view and no place at all three inches below. */
   const instName = (id: number | null) =>
-    id == null ? "no institution" : institutions.find((i) => i.id === id)?.name;
+    id == null ? tr("portfolio.noInstitution") : institutions.find((i) => i.id === id)?.name;
 
   const cashFor = (id: number | null) =>
     id == null ? undefined : cash.find((c) => c.institution_id === id);
@@ -1227,7 +1288,7 @@ function BuysSection({
       setNewName("");
       setNewType("");
     } catch (err) {
-      setError(apiError(err, "Could not add it."));
+      setError(apiError(err, tr("portfolio.couldNotAdd")));
     } finally {
       setCreatingInstitution(false);
     }
@@ -1253,10 +1314,15 @@ function BuysSection({
       const listed = q.currency;
       if (listed) setLearned((prev) => ({ ...prev, [q.symbol]: listed }));
       setPriceNote(
-        `${q.name ?? q.symbol}, close of ${fmtDate(q.as_of)}: ${q.price}${q.currency ? ` ${q.currency}` : ""}. Edit it if your fill differed.`,
+        tr("portfolio.priceNote", {
+          name: q.name ?? q.symbol,
+          date: fmtDate(q.as_of),
+          price: String(q.price),
+          currency: q.currency ? ` ${q.currency}` : "",
+        }),
       );
     } catch (err) {
-      setError(apiError(err, "No price found for that ticker on that date."));
+      setError(apiError(err, tr("portfolio.noPrice")));
     } finally {
       setFetchingPrice(false);
     }
@@ -1402,7 +1468,7 @@ function BuysSection({
       reset();
       await onChanged();
     } catch (err) {
-      setError(apiError(err, "Save failed."));
+      setError(apiError(err, tr("common.saveFailed")));
     } finally {
       setSubmitting(false);
     }
@@ -1419,27 +1485,27 @@ function BuysSection({
       if (editId === t.id) reset();
       await onChanged();
     } catch (err) {
-      setError(apiError(err, "Delete failed."));
+      setError(apiError(err, tr("ledger.deleteFailed")));
     }
   }
 
   return (
     <div ref={formRef}>
     <Section
-      title="Transactions (ledger)"
-      hint="What you paid, and what came back: the only place a real profit can come from."
-      note="Without a buy here, the P/L above measures movement since the last situation rather than gain. Rows marked ‘estimated’ came from market closes or gross dividends. Correct them with the real broker amounts."
+      title={tr("portfolio.ledgerTitle")}
+      hint={tr("portfolio.ledgerHint")}
+      note={tr("portfolio.ledgerNote")}
       explain={{
-        question: "How are sells and dividends counted?",
-        text: "A sell removes units at average cost and books the difference; a dividend credits cash.",
+        question: tr("portfolio.ledgerExplainQ"),
+        text: tr("portfolio.ledgerExplainT"),
       }}
     >
       <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
         <select className={inputClass} value={kind} onChange={(e) => setKind(e.target.value)}>
-          <option value="buy">buy</option>
-          <option value="sell">sell</option>
-          <option value="dividend">dividend</option>
-          <option value="close">close</option>
+          <option value="buy">{tr("ledger.kind.buy")}</option>
+          <option value="sell">{tr("ledger.kind.sell")}</option>
+          <option value="dividend">{tr("ledger.kind.dividend")}</option>
+          <option value="close">{tr("ledger.kind.close")}</option>
         </select>
         <input className={inputClass} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         {/* A buy has to come from somewhere. A row with neither institution
@@ -1463,7 +1529,7 @@ function BuysSection({
           className={inputClass}
           value={institutionId}
           {...marks(needs, "institutionId")}
-          title="Where the position is held, and whose cash pays for it"
+          title={tr("portfolio.instTitle")}
           onChange={(e) => {
             if (e.target.value === ADD_INSTITUTION) {
               setAddingInstitution(true);
@@ -1476,14 +1542,14 @@ function BuysSection({
           }}
         >
           <option value="" disabled>
-            Where do you keep it?
+            {tr("portfolio.instWhere")}
           </option>
           {institutions.map((i) => (
             <option key={i.id} value={i.id}>
               {i.name} · {cashNote(cashFor(i.id))}
             </option>
           ))}
-          <option value={ADD_INSTITUTION}>+ Add where you keep it</option>
+          <option value={ADD_INSTITUTION}>{tr("portfolio.instAdd")}</option>
         </select>
         {/* The same picker as the situations form, with one lane added that
             matters more here than anywhere else: a ledger entry is matched to
@@ -1495,35 +1561,35 @@ function BuysSection({
           value={assetName}
           onChange={setAssetName}
           owned={owned}
-          placeholder="Asset (type to search)"
+          placeholder={tr("portfolio.assetPlaceholder")}
           mark={marks(needs, "assetName")}
           onPick={(c) => {
             setAssetName(c.name);
             if (c.source === "catalogue") {
               // No symbol to offer, and the ledger matches on symbol alone.
-              setPickNote(`${c.isin}: the ticker is still yours to give.`);
+              setPickNote(tr("portfolio.pickNoteTicker", { isin: c.isin }));
               return;
             }
             setSymbol(c.symbol);
             setPickNote(
               c.source === "owned"
                 ? null // Known-good by definition: it came off the position.
-                : `${c.symbol}: check it matches the position you are adding to.`,
+                : tr("portfolio.pickNoteCheck", { symbol: c.symbol }),
             );
           }}
         />
-        <input className={inputClass + " w-32"} placeholder="Ticker or ISIN" {...marks(needs, "symbol")} title="Yahoo ticker with exchange suffix (e.g. VWCE.MI) or the fund's ISIN. It must match the position's symbol in Wealth" value={symbol} onChange={(e) => setSymbol(e.target.value)} />
-        <input ref={quantityRef} className={inputClass + " w-24"} type="number" step="any" min="0" aria-label="Quantity" placeholder="Qty" {...marks(needs, "quantity")} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+        <input className={inputClass + " w-32"} placeholder={tr("portfolio.tickerPlaceholder")} {...marks(needs, "symbol")} title={tr("portfolio.tickerTitle")} value={symbol} onChange={(e) => setSymbol(e.target.value)} />
+        <input ref={quantityRef} className={inputClass + " w-24"} type="number" step="any" min="0" aria-label={tr("portfolio.qtyLabel")} placeholder={tr("portfolio.qtyPlaceholder")} {...marks(needs, "quantity")} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
         {!isClose && (
-          <input className={inputClass + " w-28"} type="number" step="any" min="0" aria-label={kind === "dividend" ? "Dividend per share" : "Price"} {...marks(needs, "unitPrice")} value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
+          <input className={inputClass + " w-28"} type="number" step="any" min="0" aria-label={kind === "dividend" ? tr("portfolio.perShareLabel") : tr("portfolio.priceLabel")} {...marks(needs, "unitPrice")} value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
         )}
         {!isClose && (
           <input
             className={inputClass + " w-20"}
-            placeholder="currency"
+            placeholder={tr("portfolio.currencyPlaceholder")}
             {...marks(needs, "priceCurrency")}
             list={CURRENCY_LIST}
-            title="The currency the price is in: the listing's (USD for a New York share, GBp for pence in London)"
+            title={tr("portfolio.priceCurrencyTitle")}
             value={priceCurrency}
             onChange={(e) => setPriceCurrencyChoice(e.target.value)}
           />
@@ -1535,32 +1601,32 @@ function BuysSection({
           disabled={fetchingPrice || !symbol.trim() || !date}
           className="rounded-sm border border-rule px-2 py-2 text-xs text-ink-soft transition hover:border-olive hover:text-olive disabled:opacity-50"
         >
-          {fetchingPrice ? "…" : "↻ price on date"}
+          {fetchingPrice ? "…" : tr("portfolio.priceOnDate")}
         </button>
         <input
           className={inputClass + (isClose ? " w-32" : " w-24")}
           type="number"
           step="any"
           min="0"
-          placeholder={isClose ? "Proceeds" : "Fees"}
+          placeholder={isClose ? tr("portfolio.proceedsPlaceholder") : tr("portfolio.feesPlaceholder")}
           {...marks(needs, "fees")}
           title={
             isClose
-              ? "What came back. Zero is allowed, but it has to be said: that is the difference between selling something and forgetting it."
-              : "Broker fees and commissions"
+              ? tr("portfolio.proceedsTitle")
+              : tr("portfolio.feesTitle")
           }
           value={fees}
           onChange={(e) => setFees(e.target.value)}
         />
         <input
           className={inputClass + " w-20"}
-          placeholder="currency"
+          placeholder={tr("portfolio.currencyPlaceholder")}
           {...marks(needs, "currency")}
           list={CURRENCY_LIST}
           title={
             isClose
-              ? "The currency the proceeds reached the account in"
-              : "The currency of the account: what the fees and the money that moved are in"
+              ? tr("portfolio.proceedsCurrencyTitle")
+              : tr("portfolio.accountCurrencyTitle")
           }
           value={currency}
           onChange={(e) => setCurrencyChoice(e.target.value)}
@@ -1588,10 +1654,14 @@ function BuysSection({
             // which currency it wants instead.
             placeholder={
               acrossCurrencies
-                ? `${kind === "buy" ? "Debited" : "Credited"} in ${currency || "…"}`
-                : `${money(currency, "cents").format(derived)} if left blank`
+                ? kind === "buy"
+                  ? tr("portfolio.debitedIn", { currency: currency || "…" })
+                  : tr("portfolio.creditedIn", { currency: currency || "…" })
+                : tr("portfolio.debitDerived", {
+                    amount: money(currency, "cents").format(derived),
+                  })
             }
-            title="What the account actually moved by, from your statement. Leave it blank and it is worked out from the quantity, the price and the fees (across two currencies, at the ECB rate of the date above, where your broker's rate will differ a little)."
+            title={tr("portfolio.debitTitle")}
             value={debit}
             onChange={(e) => setDebit(e.target.value)}
           />
@@ -1603,11 +1673,23 @@ function BuysSection({
               the form states what it is about to do, and it said the wrong
               thing for two of its four kinds. Reading `kind` also means a
               fifth one cannot inherit the wrong word. */}
-          {submitting ? "..." : editId != null ? "Save" : isClose ? "Record disposal" : `Add ${kind}`}
+          {submitting
+            ? "..."
+            : editId != null
+              ? tr("common.save")
+              : isClose
+                ? tr("ledger.recordDisposal")
+                : kind === "buy"
+                  ? tr("ledger.addBuy")
+                  : kind === "sell"
+                    ? tr("ledger.addSell")
+                    : kind === "dividend"
+                      ? tr("ledger.addDividend")
+                      : tr("ledger.addKind", { kind })}
         </button>
         {editId != null && (
           <button type="button" onClick={reset} className="rounded-sm px-3 py-2 text-sm text-ink-soft hover:text-ink">
-            Cancel
+            {tr("common.cancel")}
           </button>
         )}
       </form>
@@ -1619,7 +1701,7 @@ function BuysSection({
           <input
             ref={newNameRef}
             className={inputClass}
-            placeholder="Name of the bank or broker"
+            placeholder={tr("portfolio.newInstName")}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
@@ -1631,7 +1713,7 @@ function BuysSection({
           />
           <input
             className={inputClass + " w-32"}
-            placeholder="Type (optional)"
+            placeholder={tr("portfolio.newInstType")}
             value={newType}
             onChange={(e) => setNewType(e.target.value)}
           />
@@ -1641,24 +1723,28 @@ function BuysSection({
             disabled={creatingInstitution || !newName.trim()}
             onClick={() => void createAndSelect()}
           >
-            {creatingInstitution ? "..." : "Add and use"}
+            {creatingInstitution ? "..." : tr("portfolio.addAndUse")}
           </button>
           <button
             type="button"
             onClick={() => setAddingInstitution(false)}
             className="rounded-sm px-3 py-2 text-sm text-ink-soft hover:text-ink"
           >
-            Cancel
+            {tr("common.cancel")}
           </button>
           <span className="text-xs text-ink-faint">
-            It joins the list in Records → Wealth, where you can give it a cash
-            balance and its situations.
+            {tr("portfolio.newInstNote")}
           </span>
         </div>
       )}
       {offered.length > 0 && (
         <div className="mt-2 rounded-sm border border-rule bg-tint p-2 text-xs text-ink-soft">
-          <p>{offerLine(symbol, instName(Number(institutionId)) ?? "this account")}</p>
+          <p>
+            {offerLine(
+              symbol,
+              instName(Number(institutionId)) ?? tr("ledger.thisAccount"),
+            )}
+          </p>
           <ul className="mt-1 space-y-1">
             {offered.slice(0, SHOWN).map((t) => (
               <li key={t.id} className="flex flex-wrap items-center gap-2">
@@ -1670,7 +1756,7 @@ function BuysSection({
                   onClick={() => correctInstead(t)}
                   className="rounded-sm border border-rule px-2 py-1 text-xs text-ink-soft transition hover:border-olive hover:text-olive"
                 >
-                  Correct this one
+                  {tr("ledger.correctThis")}
                 </button>
               </li>
             ))}
@@ -1685,31 +1771,43 @@ function BuysSection({
           not a verdict on the entry. */}
       {overspend && (
         <p className="mt-2 text-xs text-warn">
-          That is more than the {money(overspend.base_currency, "cents").format(overspend.projected)} on record at{" "}
-          {overspend.institution_name}. It was recorded anyway. If the balance is
-          simply behind, its cash anchor in Records → Wealth is where you say so.
+          {tr("portfolio.overspend", {
+            amount: money(overspend.base_currency, "cents").format(overspend.projected),
+            institution: overspend.institution_name,
+          })}
         </p>
       )}
       {pickNote && <p className="mb-2 text-xs text-olive">{pickNote}</p>}
       {error && <p className="text-down">{error}</p>}
       {priceNote && <p className="text-xs text-up">{priceNote}</p>}
-      <RowsOrEmpty loading={false} error={null} empty={items.length === 0} emptyText="No transactions yet. Add one, or let PACs and dividends auto-record at app start.">
+      <RowsOrEmpty loading={false} error={null} empty={items.length === 0} emptyText={tr("ledger.noTransactions")}>
         {items.map((t) => (
           <Row
             key={t.id}
             onEdit={() => startEdit(t)}
             onDelete={() => remove(t)}
             title={t.asset_name}
-            badge={[t.plan_id != null ? "PAC" : t.kind, t.estimated ? "est." : null]
+            badge={[
+              t.plan_id != null
+                ? tr("ledger.pacBadge")
+                : tOpt(`ledger.kind.${t.kind}`) ?? t.kind,
+              t.estimated ? tr("ledger.est") : null,
+            ]
               .filter(Boolean)
               .join(" · ")}
             subtitle={[
               fmtDate(t.date),
               t.price_currency ? `${t.quantity} × ${money(t.price_currency).format(t.unit_price)}` : null,
-              t.fees ? `fees ${money(t.currency).format(t.fees)}` : null,
+              t.fees
+                ? tr("ledger.feesLabel", {
+                    amount: money(t.currency).format(t.fees),
+                  })
+                : null,
               // A sum fixed at one day's rate says which day, so it can be held
               // against the statement.
-              t.fx_as_of ? `at the ECB rate of ${fmtDate(t.fx_as_of)}` : null,
+              t.fx_as_of
+                ? tr("ledger.ecbRate", { date: fmtDate(t.fx_as_of) })
+                : null,
               instName(t.institution_id),
               t.symbol,
             ]

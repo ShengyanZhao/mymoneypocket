@@ -35,7 +35,7 @@ is the shape of the question, not the payload.
 from __future__ import annotations
 
 import datetime
-from typing import Any, Iterable, Sequence, TypeVar
+from typing import Any, Callable, Iterable, Sequence, TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -178,7 +178,10 @@ def carry_forward(
 
 
 def events_after(
-    anchor: Any | None, records: Iterable[T], until: str | None = None
+    anchor: Any | None,
+    records: Iterable[T],
+    until: str | None = None,
+    when: Callable[[T], str] | None = None,
 ) -> list[T]:
     """The events the anchor does NOT already account for: everything dated
     strictly AFTER it, up to and including `until`.
@@ -204,10 +207,17 @@ def events_after(
 
     `anchor` may be a dated record, a bare ISO string, or None (no anchor yet,
     so every event is still outstanding). Order is preserved; the caller sorts
-    if it cares."""
+    if it cares.
+
+    `when` names the day a record counts on, for the one record that has two:
+    a ledger entry's money and its units can settle days apart (PRD §4.3), so
+    the cash projection reads `cash_date` and the unit projection
+    `quantity_date`, and the strict-after RULE stays here, once. Left out,
+    every record counts on its own `date`."""
+    read = when or date_of
     lo = "" if anchor is None else (anchor if isinstance(anchor, str) else date_of(anchor))
     return [
         r
         for r in records
-        if date_of(r) > lo and (until is None or date_of(r) <= until)
+        if read(r) > lo and (until is None or read(r) <= until)
     ]

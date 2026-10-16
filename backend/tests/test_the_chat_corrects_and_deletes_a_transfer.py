@@ -234,10 +234,10 @@ def test_the_card_says_what_arrived_is_worked_out_again(client, monkeypatch, fee
     assert {"field": "Reached", "now": "400.00 EUR", "proposed": "312.50 EUR"} in card["diff"]
     assert {
         "field": "What arrived is",
-        "now": f"at the ECB rate of {DAY}",
-        "proposed": f"at the ECB rate of {NEW_DAY}",
+        "now": f"at the {fx.source_name()} reference rate of {DAY}",
+        "proposed": f"at the {fx.source_name()} reference rate of {NEW_DAY}",
     } in card["diff"]
-    assert f"What arrived is worked out again, at the ECB rate of {NEW_DAY}." in card["consequence"]
+    assert f"What arrived is worked out again, at the {fx.source_name()} reference rate of {NEW_DAY}." in card["consequence"]
 
 
 def _typed_in(client) -> dict:
@@ -423,7 +423,7 @@ def test_one_account_on_both_sides_is_refused(client, monkeypatch):
 
 
 def test_a_day_with_no_final_rate_is_refused_with_the_forms_sentence(client, monkeypatch):
-    """Today, before the ECB publishes: the form's own refusal."""
+    """Today, before the feed publishes: the form's own refusal."""
     yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
     monkeypatch.setattr(
         fx, "_fetch_rates", lambda base, start, end=None: {DAY: {"USD": 1.25}, yesterday: {"USD": 1.25}}

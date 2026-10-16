@@ -20,7 +20,7 @@ import re
 import pandas as pd
 import pytest
 
-from app import advisor, catalogue, crud, models, tools
+from app import advisor, catalogue, crud, fx, models, tools
 from app.database import SessionLocal
 
 CATALOGUE = pd.DataFrame(
@@ -201,7 +201,7 @@ def test_a_ledger_card_says_the_amount_and_the_day_of_its_rate():
     assert shown["fields"][1] == {"label": "Date", "value": "2026-10-01", "kind": "date"}
     assert shown["receipt"] == [
         {"label": "Amount", "value": "80.0", "kind": "amount", "currency": "EUR"},
-        {"label": "At the ECB rate of", "value": "2026-10-01", "kind": "date"},
+        {"label": f"At the {fx.source_name()} reference rate of", "value": "2026-10-01", "kind": "date"},
         {"label": "Held at", "value": "Broker A", "kind": "text"},
     ]
     assert shown["done"] == "Recorded"

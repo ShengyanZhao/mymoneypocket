@@ -4,7 +4,11 @@ import type { Institution } from "./api/institutions";
 import type { Liability } from "./api/liabilities";
 import type { RealAsset } from "./api/realAssets";
 import type { Snapshot } from "./api/snapshots";
-import { getBaseCurrency } from "./api/baseCurrency";
+import {
+  getBaseCurrency,
+  saveBaseCurrency,
+  type BaseCurrencySetting,
+} from "./api/baseCurrency";
 import { ensureCatalogue } from "./api/instruments";
 import { catchUp, type CatchUpResult } from "./api/transactions";
 import Dashboard from "./components/Dashboard";
@@ -15,8 +19,9 @@ import Goals from "./components/Goals";
 import Analysis from "./components/Analysis";
 import ChatPanel from "./components/ChatPanel";
 import { Mark } from "./components/Emblem";
-import { CURRENCY_LIST } from "./components/ui";
+import { apiError, CURRENCY_LIST, inputClass } from "./components/ui";
 import { dividendsNote } from "./components/catchUpNote";
+import { setLocale, useT, type MessageKey } from "./i18n/index.ts";
 import type { Focus } from "./nav";
 
 // Four voices, grouped by what you are DOING rather than by database table:
@@ -29,12 +34,12 @@ import type { Focus } from "./nav";
 // silent. What the page WAS for survives: a verdict is a document, so reading
 // one still happens here in the main column, opened from the card that
 // produced it. See `reading` below.
-const TABS = [
-  { key: "dashboard", label: "Dashboard", wide: true },
-  { key: "portfolio", label: "Portfolio", wide: true },
-  { key: "records", label: "Records", wide: true },
-  { key: "profile", label: "Profile", wide: false },
-] as const;
+const TABS: { key: "dashboard" | "portfolio" | "records" | "profile"; labelKey: MessageKey; wide: boolean }[] = [
+  { key: "dashboard", labelKey: "nav.tabs.dashboard", wide: true },
+  { key: "portfolio", labelKey: "nav.tabs.portfolio", wide: true },
+  { key: "records", labelKey: "nav.tabs.records", wide: true },
+  { key: "profile", labelKey: "nav.tabs.profile", wide: false },
+];
 
 // Two measures, not one. 1024px is a READING measure — it exists to hold a line
 // under about 75 characters — but a table is not read, it is scanned, and at
@@ -77,6 +82,118 @@ function TabButton({
   );
 }
 
+/* The language toggle: two words, and no drop-down.
+
+   A language is one of two things at most here, so a control that opens a
+   list is a control asking a question that has two answers. It sits at the
+   end of the header rather than in a settings page, because a reader who
+   cannot read the page cannot navigate to a settings page to fix that.
+
+   The choice is remembered in `localStorage` and sent to the backend on every
+   request, so the words the server says arrive in the same language as the
+   words around them. */
+function LangToggle() {
+  const tr = useT();
+  return (
+    <div
+      role="group"
+      aria-label={tr("lang.label")}
+      className="ml-auto flex items-center gap-1 self-center text-xs"
+    >
+      {(["en", "zh"] as const).map((l) => (
+        <button
+          key={l}
+          onClick={() => setLocale(l)}
+          aria-pressed={tr.locale === l}
+          className={
+            "rounded-sm px-2 py-1 transition " +
+            (tr.locale === l
+              ? "bg-olive text-white"
+              : "text-ink-soft hover:text-ink")
+          }
+        >
+          {l === "en" ? tr("lang.en") : tr("lang.zh")}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* The currency every total is shown in, at the end of the header.
+
+   The same choice Profile's "base currency" section offers, offered where the
+   figures it changes are: a reader who has just seen a total ask why it is in
+   the wrong unit should not have to go to another tab to find the control.
+   The section there stays — it also says what moves and what does not, which
+   is the part a two-word box in a header has no room for.
+
+   Pressing it COMMITS. This is not a pending field beside a Save button: the
+   backend has to fetch and store the new base's rates before the base moves,
+   so a choice that cannot be priced is refused with the feed's own sentence
+   and nothing changes — the box then goes back to the currency still in force
+   and says what was said. The response is the whole setting, so the page
+   re-reads it and every figure below is drawn again in the new unit. */
+function CurrencyPicker({
+  current,
+  available,
+  onSaved,
+}: {
+  current: string;
+  available: string[];
+  onSaved: (setting: BaseCurrencySetting) => void;
+}) {
+  const tr = useT();
+  // The code being written, or null when nothing is. Held apart from the
+  // stored one so the box can show the choice while it is still only a
+  // request, and fall back the moment the backend refuses it.
+  const [pending, setPending] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Nothing until the setting has been read: a box with no currency to show
+  // is a box that can only mislead, and a backend that did not answer is the
+  // same state as one that has no setting yet.
+  if (!current) return null;
+
+  async function pick(code: string) {
+    if (code === current) return;
+    setPending(code);
+    setError(null);
+    try {
+      onSaved(await saveBaseCurrency(code));
+    } catch (err) {
+      setError(apiError(err, tr("currency.failed")));
+    } finally {
+      setPending(null);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2 self-center text-xs">
+      <label htmlFor="header-currency" className="text-ink-soft">
+        {tr("currency.label")}
+      </label>
+      <select
+        id="header-currency"
+        className={inputClass + " px-2 py-1 text-xs"}
+        value={pending ?? current}
+        disabled={pending !== null}
+        onChange={(e) => void pick(e.target.value)}
+      >
+        {available.map((code) => (
+          <option key={code} value={code}>
+            {code}
+          </option>
+        ))}
+      </select>
+      {error && (
+        <span role="alert" className="max-w-64 text-down">
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // The rail: a narrow column on the far left that is always there, and IS the
 // button — the whole strip opens and closes the chat, not a glyph inside it.
 // It has to be read as the chat before it is pressed, so it carries a tinted
@@ -84,12 +201,13 @@ function TabButton({
 // panel slides out from behind it, so the control sits where the thing it
 // controls comes from.
 function ChatRail({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  const tr = useT();
   return (
     <button
       onClick={onToggle}
-      aria-label={open ? "Close the chat" : "Open the chat"}
+      aria-label={open ? tr("chat.rail.close") : tr("chat.rail.open")}
       aria-pressed={open}
-      title={open ? "Close the chat" : "Ask Aurelio about your finances"}
+      title={open ? tr("chat.rail.close") : tr("chat.rail.askTitle")}
       className={
         "relative sticky top-0 z-10 flex h-screen w-14 shrink-0 items-center justify-center border-r transition " +
         (open
@@ -132,7 +250,7 @@ function ChatRail({ open, onToggle }: { open: boolean; onToggle: () => void }) {
         aria-hidden="true"
         className="font-display text-xl leading-none tracking-wide [writing-mode:vertical-rl] rotate-180"
       >
-        {open ? "Close the chat" : "Ask Aurelio"}
+        {open ? tr("chat.rail.close") : tr("chat.rail.ask")}
       </span>
     </button>
   );
@@ -150,12 +268,15 @@ function PacBanner({
   onOpenPortfolio: () => void;
   measure: string;
 }) {
+  const tr = useT();
   const buys = result.created.filter((t) => t.kind === "buy").length;
   const divs = result.created.filter((t) => t.kind === "dividend").length;
+  // The two counts said together: "1 PAC purchase and 1 dividend", not two
+  // separate sentences about one automatic run.
   const parts = [
-    buys > 0 ? `${buys} PAC purchase${buys > 1 ? "s" : ""}` : null,
-    divs > 0 ? `${divs} dividend${divs > 1 ? "s" : ""}` : null,
-  ].filter(Boolean);
+    buys > 0 ? tr("pac.purchases", { count: buys }) : null,
+    divs > 0 ? tr("pac.dividends", { count: divs }) : null,
+  ].filter((p): p is string => p !== null);
   return (
     <div className="border-b border-olive-tint bg-olive-tint">
       <div
@@ -166,24 +287,33 @@ function PacBanner({
       >
         {parts.length > 0 && (
           <span>
-            <span className="font-semibold">{parts.join(" and ")}</span> recorded automatically
-            (marked <em>estimated</em>: correct them with the real amounts if they differ).{" "}
-            {divs > 0 && <>{dividendsNote(divs)} </>}
+            {tr.rich("pac.recorded", { parts: tr.list(parts), count: parts.length }).map((p, i) =>
+              p.kind === "em" ? (
+                <em key={i}>{p.value}</em>
+              ) : p.kind === "strong" ? (
+                <strong key={i}>{p.value}</strong>
+              ) : (
+                <span key={i}>{p.value}</span>
+              ),
+            )}
+            {divs > 0 && <> {dividendsNote(divs)} </>}
             <button onClick={onOpenPortfolio} className="font-medium underline">
-              Review in Portfolio
+              {tr("pac.review")}
             </button>
           </span>
         )}
         {result.skipped.length > 0 && (
           <span className="text-olive-deep">
-            {result.skipped.length} occurrence{result.skipped.length > 1 ? "s" : ""} skipped
-            ({result.skipped[0].reason}
-            {result.skipped.length > 1 ? ", …" : ""}). Will retry at next start.
+            {tr("pac.skipped", {
+              count: result.skipped.length,
+              reason: result.skipped[0].reason,
+              more: result.skipped.length > 1 ? ", …" : "",
+            })}
           </span>
         )}
         <button
           onClick={onDismiss}
-          aria-label="Dismiss"
+          aria-label={tr("common.dismiss")}
           className="ml-auto px-2 text-olive hover:text-olive-deep"
         >
           ✕
@@ -194,15 +324,25 @@ function PacBanner({
 }
 
 export default function App() {
+  const tr = useT();
   // The dashboard is the landing view: you read it far more often than you
   // fill in your profile.
   const [tab, setTab] = useState<Tab>("dashboard");
   const [pacResult, setPacResult] = useState<CatchUpResult | null>(null);
-  /* The codes the rate feed quotes, offered to every currency box in the app
-     (`CURRENCY_LIST`). Fetched once here rather than per form: `<datalist>` is
-     referenced by document id, so one element serves inputs anywhere in the
-     tree, and a page with four currency boxes does not ask four times. */
-  const [quoted, setQuoted] = useState<string[]>([]);
+  /* What the rate feed quotes, and what the totals are shown in: one setting,
+     read once here. It feeds two things — the `<datalist>` of codes offered to
+     every currency box (`CURRENCY_LIST`) and the picker in the header — and it
+     is fetched here rather than per form because `<datalist>` is referenced by
+     document id, so one element serves inputs anywhere in the tree, and a page
+     with four currency boxes does not ask four times. */
+  const [currency, setCurrency] = useState<BaseCurrencySetting | null>(null);
+  /* Bumped when the base currency changes, to draw every figure below again.
+     Each page reads the base once on mount, so the open page would go on
+     showing the old unit until it was left and came back — and "until you
+     switch tabs" is not an answer to a control in the header. One key on the
+     page column remounts whichever is showing, which is exactly the state
+     these components are written to load themselves into. */
+  const [baseVersion, setBaseVersion] = useState(0);
   // The chat panel: state ABOVE the tabs, because a conversation that forgot
   // itself when you went to look at the table it was talking about would be a
   // tab in disguise. It stays as you left it when you navigate — open follows
@@ -306,7 +446,7 @@ export default function App() {
   // what they did before there was a list.
   useEffect(() => {
     getBaseCurrency()
-      .then((b) => setQuoted(b.available))
+      .then(setCurrency)
       .catch(() => {});
   }, []);
 
@@ -338,7 +478,7 @@ export default function App() {
     // where the eye can follow it.
     <div className="flex min-h-screen bg-ground text-ink">
       {/* Suggestions, not a choice. A closed dropdown of the feed's codes would
-          answer the matching question and refuse a real holding: the ECB does
+          answer the matching question and refuse a real holding: the feed does
           not quote TWD, and a Taipei-listed fund is an ordinary thing to own —
           nor GBp, which London genuinely quotes in pence. So the boxes stay
           typeable, the shape is checked on the way in (`StatedCurrency`), and
@@ -346,7 +486,7 @@ export default function App() {
           (`UnconvertedNotice`). This is the part that answers "how do they
           match with the rest?". */}
       <datalist id={CURRENCY_LIST}>
-        {quoted.map((code) => (
+        {(currency?.available ?? []).map((code) => (
           <option key={code} value={code} />
         ))}
       </datalist>
@@ -382,23 +522,32 @@ export default function App() {
               </span>
             </span>
             <nav className="flex flex-wrap gap-x-4 gap-y-1">
-              {TABS.map((t) => (
+              {TABS.map((entry) => (
                 <TabButton
-                  key={t.key}
-                  active={reading === null && tab === t.key}
+                  key={entry.key}
+                  active={reading === null && tab === entry.key}
                   onClick={() => {
                     setReading(null);
-                    setTab(t.key);
+                    setTab(entry.key);
                   }}
                 >
-                  {t.label}
+                  {tr(entry.labelKey)}
                 </TabButton>
               ))}
             </nav>
+            <LangToggle />
+            <CurrencyPicker
+              current={currency?.base_currency ?? ""}
+              available={currency?.available ?? []}
+              onSaved={(setting) => {
+                setCurrency(setting);
+                setBaseVersion((n) => n + 1);
+              }}
+            />
           </div>
         </header>
 
-        <main className={"px-6 py-8 " + measure}>
+        <main key={baseVersion} className={"px-6 py-8 " + measure}>
           {reading !== null ? (
             <Analysis
               runId={reading === "list" ? null : reading}

@@ -795,7 +795,7 @@ class RecordTransactionArgs(BaseModel):
             "ISO code `unit_price` is in: the listing's currency, e.g. USD for "
             "a New York share, EUR for VWCE.MI. Required for a buy, a sell and a "
             "dividend; null for a close. When it differs from `currency` and "
-            "`amount` is null, the amount is worked out at the ECB rate of `date`."
+            "`amount` is null, the amount is worked out at the reference rate of `date`."
         ),
     )
     amount: float | None = Field(
@@ -1059,7 +1059,7 @@ def _propose_transaction(db: Session, args: RecordTransactionArgs) -> Proposal:
     if entry.fx_as_of:
         # A debit worked out here, not read off a statement: the card says so,
         # and says which day's rate, so the reader can check it against theirs.
-        cash += f" (at the ECB rate of {entry.fx_as_of})"
+        cash += f" (at the {fx.source_name()} reference rate of {entry.fx_as_of})"
     if args.kind == "close":
         body = f"{what} — {cash} back"
     elif args.kind == "dividend":
@@ -1141,7 +1141,7 @@ def _transaction_receipt(result: dict) -> list[tuple]:
     the card's own fields cannot show."""
     return [
         ("Amount", result.get("amount"), "amount", result.get("currency")),
-        ("At the ECB rate of", result.get("fx_as_of"), "date"),
+        (f"At the {fx.source_name()} reference rate of", result.get("fx_as_of"), "date"),
         ("Held at", result.get("institution"), "text"),
     ]
 
@@ -1598,7 +1598,7 @@ def _ledger_receipt(result: dict) -> list[tuple]:
         return [("Deleted", result["deleted"], "text")]
     return [
         ("Now", result.get("entry"), "text"),
-        ("At the ECB rate of", result.get("fx_as_of"), "date"),
+        (f"At the {fx.source_name()} reference rate of", result.get("fx_as_of"), "date"),
     ]
 
 
@@ -2689,7 +2689,7 @@ class RecordTransferArgs(BaseModel):
         gt=0,
         description=(
             "What reached the second account, from its statement, when the two "
-            "currencies differ. Null works it out at the ECB rate of the day, and is "
+            "currencies differ. Null works it out at the reference rate of the day, and is "
             "refused when that day has no final rate yet."
         ),
     )
@@ -2737,7 +2737,7 @@ def _propose_transfer(db: Session, args: RecordTransferArgs) -> Proposal:
         raise LookupError(str(exc)) from exc
     left = f"{body['amount']:.2f} {body['currency']}"
     reached = f"{stored['to_amount']:.2f} {body['to_currency']}"
-    rate = f" (at the ECB rate of {stored['fx_as_of']})" if stored.get("fx_as_of") else ""
+    rate = f" (at the {fx.source_name()} reference rate of {stored['fx_as_of']})" if stored.get("fx_as_of") else ""
     moved = left if left == reached else f"{left} → {reached}{rate}"
     return Proposal(
         title=f"transfer: {moved}, {source.name} to {target.name}, {body['date']}",
@@ -2786,7 +2786,7 @@ _TRANSFER_LABELS = {
 def _transfer_receipt(result: dict) -> list[tuple]:
     return [
         ("Reached", result.get("to_amount"), "amount", result.get("to_currency")),
-        ("At the ECB rate of", result.get("fx_as_of"), "date"),
+        (f"At the {fx.source_name()} reference rate of", result.get("fx_as_of"), "date"),
     ]
 
 
@@ -2843,7 +2843,7 @@ class ChangeTransferArgs(BaseModel):
         description=(
             "correct: what reached the second account, from its statement. Null keeps a "
             "figure typed from a statement, and works out again one the app worked out, at "
-            "the ECB rate of its day."
+            "the reference rate of its day."
         ),
     )
 
@@ -2878,7 +2878,7 @@ def _transfer_text(db: Session, t) -> str:
     moved = f"{t.amount:.2f} {t.currency}"
     if not _same_sum(t):
         moved += f" → {t.to_amount:.2f} {t.to_currency}"
-    rate = f" at the ECB rate of {t.fx_as_of}" if t.fx_as_of else ""
+    rate = f" at the {fx.source_name()} reference rate of {t.fx_as_of}" if t.fx_as_of else ""
     return f"{t.date} {_side(db, t.from_institution_id)} to {_side(db, t.to_institution_id)}: {moved}{rate}"
 
 
@@ -2980,7 +2980,7 @@ def _transfer_change(db: Session, args: ChangeTransferArgs) -> _TransferChange:
 def _arrival(t) -> str:
     """How what arrived was had, in the reader's words."""
     if t.fx_as_of:
-        return f"at the ECB rate of {t.fx_as_of}"
+        return f"at the {fx.source_name()} reference rate of {t.fx_as_of}"
     return "the same sum" if _same_sum(t) else "from a statement"
 
 
@@ -3022,7 +3022,7 @@ def _propose_transfer_change(db: Session, args: ChangeTransferArgs) -> Proposal:
                 "figure if it changed."
             )
         elif after.fx_as_of and (after.fx_as_of, after.to_amount) != (t.fx_as_of, t.to_amount):
-            said.append(f"What arrived is worked out again, at the ECB rate of {after.fx_as_of}.")
+            said.append(f"What arrived is worked out again, at the {fx.source_name()} reference rate of {after.fx_as_of}.")
         said.extend(cash_moves.said(moves, [t.date, after.date], figures=False))
         title = f"correct transfer: {t.date} {sides}" + (
             f", {t.amount:.2f} → {after.amount:.2f} {after.currency}" if after.amount != t.amount else ""
@@ -3079,7 +3079,7 @@ def _change_transfer_receipt(result: dict) -> list[tuple]:
         return [("Deleted", result["deleted"], "text")]
     return [
         ("Now", result.get("transfer"), "text"),
-        ("At the ECB rate of", result.get("fx_as_of"), "date"),
+        (f"At the {fx.source_name()} reference rate of", result.get("fx_as_of"), "date"),
     ]
 
 
@@ -3853,7 +3853,7 @@ def _pac_amount_receipt(result: dict) -> list[tuple]:
 #
 # The currency every total is shown in, changed as the Profile page's Save
 # changes it (brief AN): through `crud.change_base`, the function its request
-# calls. Changing it asks the ECB's feed for the new base's rates and stores
+# calls. Changing it asks the reference-rate feed for the new base's rates and stores
 # them before the setting moves, so it runs as the analysis runs, on the
 # stream and outside the confirmation's unit of work: a fetch inside it would
 # hold SQLite's write lock while the network answers.
@@ -3863,7 +3863,7 @@ class ChangeBaseCurrencyArgs(BaseModel):
     """The currency every total is to be shown in."""
 
     currency: schemas.StatedCurrency = Field(
-        ..., description="An ISO code the ECB's reference rates quote, such as EUR, USD, GBP, CHF."
+        ..., description="An ISO code the reference-rate feed quotes, such as EUR, USD, GBP, CHF."
     )
 
 
@@ -3876,7 +3876,7 @@ def _base_change(db: Session, args: ChangeBaseCurrencyArgs) -> tuple[str, str]:
     available = fx.feed_currencies(db)
     if wanted not in available:
         raise LookupError(
-            f"{wanted} is not a currency the ECB rate feed quotes, so no total could be "
+            f"{wanted} is not a currency the {fx.source_name()} reference-rate feed quotes, so no total could be "
             f"converted into it. Choose one of: {', '.join(available)}."
         )
     return now, wanted
@@ -3884,7 +3884,7 @@ def _base_change(db: Session, args: ChangeBaseCurrencyArgs) -> tuple[str, str]:
 
 def _propose_base(db: Session, args: ChangeBaseCurrencyArgs) -> Proposal:
     """A setting rewritten, so the diff; what changes, what does not, and that
-    the ECB's feed is asked before anything moves."""
+    the reference-rate feed is asked before anything moves."""
     now, wanted = _base_change(db, args)
     since = crud.earliest_dated_record(db)
     reach = f"from {since} to today" if since else "for today"
@@ -3896,7 +3896,7 @@ def _propose_base(db: Session, args: ChangeBaseCurrencyArgs) -> Proposal:
             f"Every total and figure the app shows is shown in {wanted} from then on, "
             "the net worth's history included. Nothing stored is rewritten: every "
             "amount keeps the currency it was recorded in, and a sum fixed on its day "
-            "keeps its figure. Confirming asks the ECB's feed for its rates against "
+            "keeps its figure. Confirming asks the reference-rate feed for its rates against "
             f"{wanted} {reach} and stores them first; if the feed does not answer, "
             "nothing changes."
         ),
@@ -3917,7 +3917,7 @@ def _walk_base(db: Session, args: ChangeBaseCurrencyArgs) -> Iterator[Working]:
     base = fx.base_currency(db)
     yield Working(
         step_no=1,
-        label=f"The ECB's rates against {base} fetched and stored, and the base changed",
+        label=f"The {fx.source_name()} rates against {base} fetched and stored, and the base changed",
         duration_ms=int((time.monotonic() - started) * 1000),
     )
     return {"base_currency": base, "was": was}
@@ -4764,7 +4764,7 @@ REGISTRY: dict[str, Tool] = {
             description=(
                 "Propose changing the currency every total is shown in, as the Profile "
                 "page's Save changes it. Nothing stored is rewritten; confirming asks "
-                "the ECB's feed for the new base's rates first."
+                "the reference-rate feed for the new base's rates first."
             ),
             arguments=ChangeBaseCurrencyArgs,
             walk=_walk_base,
@@ -4905,7 +4905,7 @@ class SearchWebArgs(BaseModel):
         description=(
             "What to search for, as you would type it into a search engine: "
             "words about instruments and facts, such as 'S&P 500 UCITS ETF "
-            "lowest ongoing charge' or 'ECB rate decision September 2026'."
+            "lowest ongoing charge' or 'central bank rate decision September 2026'."
         ),
     )
 

@@ -306,7 +306,7 @@ def execute_due(db: Session, as_of: datetime.date | None = None) -> dict:
         # history for VWCE.MI ended in a row dated that day at 165.70 — the last
         # minute's trade — and the one for VTI, before New York opened, ended at
         # the 15th, so the occurrence would have been bought at the day before's
-        # close and dated then. And the ECB may not have published the day's
+        # close and dated then. And the feed may not have published the day's
         # rate, and a debit written at yesterday's keeps it for good. Nothing is
         # written; the next run after the day ends buys it.
         today = dated.today()
@@ -318,7 +318,7 @@ def execute_due(db: Session, as_of: datetime.date | None = None) -> dict:
                         "occurrence": occ,
                         "reason": (
                             f"{occ.isoformat()} is not over: the market has no close "
-                            "for it yet, nor the ECB perhaps a rate; bought on the "
+                            "for it yet, nor the feed perhaps a rate; bought on the "
                             "first run after it"
                         ),
                     }
@@ -861,6 +861,10 @@ def execute_dividends(db: Session, as_of: datetime.date | None = None) -> dict:
                     for t in all_txs
                     if t.institution_id == inst_id and t.symbol == h.symbol
                 ),
+                # Units count when they land (`quantity_date`): a buy traded
+                # before the situation but confirmed after it is not in the
+                # photograph (PRD §4.3).
+                when=lambda t: t.quantity_date,
             )
             for d in divs:
                 ex_date = datetime.date.fromisoformat(d["date"])

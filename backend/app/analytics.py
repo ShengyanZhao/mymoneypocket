@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import calendar
 import datetime
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Collection, Iterator
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -78,6 +78,42 @@ def recurrence(
         yield occ
 
 
+# How near a statement entry must sit to a flow's payment day to BE that
+# payment. A salary is credited a day or two off its nominal date, and a
+# statement says when the money moved; ±5 days is wider than any delay a
+# payroll shows and narrower than two monthly payments, so one entry can
+# cover only one of them.
+_COVER_WINDOW_DAYS = 5
+
+
+def _covered_by_entries(
+    covers: Collection[tuple[str, float, datetime.date]],
+    direction: str,
+    amount: float,
+    occ: datetime.date,
+) -> bool:
+    """Whether the payment due on `occ` is already carried by one of the
+    statement entries in `covers` — (direction, base amount, date) triples of
+    what an import or a typed row recorded.
+
+    This is the whole of the double-count rule for the two voices of the cash
+    register: a recurring flow says what REPEATS, an entry says what HAPPENED,
+    and when the two describe one payment the entry speaks for it (its date
+    and its exact sum are the truer ones) and the flow's occurrence counts
+    nothing. An entry that matches no flow is none's payment and moves the
+    register on its own. Both ends of that rule live here: `_flow_sum_in_window`
+    skips what this says is covered, and the entry's own net is added
+    regardless (`compute_cash_position`)."""
+    for d, a, day in covers:
+        if (
+            d == direction
+            and abs(a - amount) <= 0.01
+            and abs((day - occ).days) <= _COVER_WINDOW_DAYS
+        ):
+            return True
+    return False
+
+
 def _flow_sum_in_window(
     amount: float,
     frequency: str | None,
@@ -85,6 +121,8 @@ def _flow_sum_in_window(
     end: datetime.date | None,
     lo: datetime.date,
     hi: datetime.date,
+    covers: Collection[tuple[str, float, datetime.date]] = (),
+    direction: str = "in",
 ) -> float:
     """Total of a flow's occurrences in the window (lo, hi] — lo EXCLUSIVE (the
     anchor balance already 'banked' everything up to its date), hi INCLUSIVE —
@@ -92,6 +130,11 @@ def _flow_sum_in_window(
     placed in time and contributes 0. A one_off occurs once, on its start_date.
     The others fall on `recurrence`'s dates, so the day of the start is the
     day of every payment, the last day of a shorter month aside.
+
+    `covers` are the statement entries of the same account and side
+    (`_covered_by_entries`); an occurrence one of them carries counts nothing
+    here, because the entry adds its own exact sum instead. `direction` names
+    the side this flow stands on: "in" for an income, "out" for an expense.
     """
     if start is None:
         return 0.0
@@ -99,11 +142,19 @@ def _flow_sum_in_window(
     if freq == "one_off":
         in_window = lo < start <= hi
         within_life = end is None or start <= end
-        return amount if (in_window and within_life) else 0.0
+        paid = _covered_by_entries(covers, direction, amount, start)
+        return amount if (in_window and within_life and not paid) else 0.0
 
     step = STEP_MONTHS.get(freq, 1)
     last = hi if end is None else min(hi, end)
-    return sum((amount for occ in recurrence(start, step, last) if occ > lo), 0.0)
+    return sum(
+        (
+            amount
+            for occ in recurrence(start, step, last)
+            if occ > lo and not _covered_by_entries(covers, direction, amount, occ)
+        ),
+        0.0,
+    )
 
 
 
@@ -121,6 +172,27 @@ def _days_since(iso: str | None, today: datetime.date | None = None) -> int | No
 # --- Cash register (live projection) --------------------------------------
 
 
+def _entry_effects(
+    rows: list[models.CashEntry], in_base: Callable[[float, str | None], float]
+) -> tuple[list[tuple[str, float, datetime.date]], float]:
+    """(covers, net) for one account's statement entries.
+
+    `net` is what the entries did to the balance, one sum. `covers` is what
+    they say about the recurring flows — see `_covered_by_entries`, whose
+    argument this builds. An entry that is a leg of a Transfer does NEITHER:
+    the Transfer moved both accounts, and counting the leg as well would move
+    one of them twice."""
+    covers: list[tuple[str, float, datetime.date]] = []
+    net = 0.0
+    for e in rows:
+        if e.linked_transfer_id is not None:
+            continue
+        moved = in_base(e.amount, e.currency)
+        net += moved if e.direction == "in" else -moved
+        covers.append((e.direction, moved, _parse(e.date)))
+    return covers, net
+
+
 def compute_cash_position(
     db: Session,
     institution_id: int,
@@ -129,16 +201,22 @@ def compute_cash_position(
     transactions: list[models.Transaction] | None = None,
     transfers: list[models.Transfer] | None = None,
     anchors: list[models.CashAnchor] | None = None,
+    entries: list[models.CashEntry] | None = None,
 ) -> dict | None:
     """Project an institution's cash at `as_of` (default today) from its latest
     anchor on/before that date::
 
         projected = anchor + income - expenses + transfers_in - transfers_out
-                    - buys + sells (proceeds, dividends and closed positions)
+                    + entries_net - buys + sells (proceeds, dividends, closes)
 
     counting only events strictly AFTER the anchor date, up to as_of. Returns
     None if the institution does not exist; a zeroed breakdown if it has no
     anchor yet (there is no starting balance to project from).
+
+    `entries_net` is the statement lane: what an import or a typed row moved
+    (`CashEntry`). It does not add to the recurring flows' figures — where an
+    entry IS a flow's payment the flow's occurrence counts nothing
+    (`_covered_by_entries`), so the two voices describe each payment once.
 
     Every figure in the breakdown is in the base currency: each anchor, flow
     and transfer is converted from the currency its row states before it is
@@ -178,6 +256,7 @@ def compute_cash_position(
         "expenses": 0.0,
         "transfers_in": 0.0,
         "transfers_out": 0.0,
+        "entries_net": 0.0,
         "buys": 0.0,
         "sells": 0.0,
         "projected": 0.0,
@@ -190,10 +269,23 @@ def compute_cash_position(
         return result
 
     lo = _parse(anchor.date)
+    covers, entries_net = _entry_effects(
+        [
+            e
+            for e in dated.events_after(
+                anchor,
+                db.scalars(select(models.CashEntry)) if entries is None else entries,
+                until=as_of_iso,
+            )
+            if e.institution_id == inst.id
+        ],
+        in_base,
+    )
     income = sum(
         _flow_sum_in_window(
             in_base(i.amount, i.currency),
             i.frequency, _parse(i.start_date), _parse(i.end_date), lo, as_of,
+            covers=covers, direction="in",
         )
         for i in db.scalars(
             select(models.IncomeSource).where(
@@ -205,6 +297,7 @@ def compute_cash_position(
         _flow_sum_in_window(
             in_base(e.amount, e.currency),
             e.frequency, _parse(e.start_date), _parse(e.end_date), lo, as_of,
+            covers=covers, direction="out",
         )
         for e in db.scalars(
             select(models.Expense).where(models.Expense.institution_id == inst.id)
@@ -230,10 +323,12 @@ def compute_cash_position(
     # cash out; everything else pays in — sale proceeds, dividends, and what
     # came back when a position was closed. Each entry's amount is in its own
     # `currency` — the cash side, fixed on its day — and converts like any
-    # other amount in this register.
+    # other amount in this register. `cash_date` is when that side MOVED: a
+    # buy pays at the trade and waits for its units, a redemption pays days
+    # after its shares left (PRD §4.3).
     buys_out = sells_in = 0.0
     ledger = transactions if transactions is not None else db.scalars(select(models.Transaction))
-    for t in dated.events_after(anchor, ledger, until=as_of_iso):
+    for t in dated.events_after(anchor, ledger, until=as_of_iso, when=lambda t: t.cash_date):
         if (t.cash_institution_id or t.institution_id) != inst.id:
             continue
         if t.kind == "buy":
@@ -249,6 +344,7 @@ def compute_cash_position(
         expenses=expenses,
         transfers_in=transfers_in,
         transfers_out=transfers_out,
+        entries_net=entries_net,
         buys=buys_out,
         sells=sells_in,
         projected=anchor_amount
@@ -256,6 +352,7 @@ def compute_cash_position(
         - expenses
         + transfers_in
         - transfers_out
+        + entries_net
         - buys_out
         + sells_in,
     )
@@ -793,6 +890,9 @@ def _cash_totals_by_date(
     ledger_by_inst: dict[int, list[models.Transaction]] = {}
     for t in ledger:
         ledger_by_inst.setdefault(t.cash_institution_id or t.institution_id, []).append(t)
+    entries_by_inst: dict[int, list[models.CashEntry]] = {}
+    for e in db.scalars(select(models.CashEntry)):
+        entries_by_inst.setdefault(e.institution_id, []).append(e)
     transfers_by_inst: dict[int, list[models.Transfer]] = {}
     for t in transfers:
         for iid in {t.to_institution_id, t.from_institution_id}:
@@ -808,6 +908,7 @@ def _cash_totals_by_date(
                 iid, d, in_base,
                 anchors_by_inst.get(iid, []), incomes.get(iid, []), expenses.get(iid, []),
                 transfers_by_inst.get(iid, []), ledger_by_inst.get(iid, []),
+                entries_by_inst.get(iid, []),
             )
             if projected is not None:  # None: no starting balance to project from
                 total += projected
@@ -824,33 +925,43 @@ def _projected_cash(
     expenses: list,
     transfers: list,
     ledger: list,
+    entries: list | None = None,
 ) -> float | None:
     """One account's cash at `d`, on rows already read: `compute_cash_position`'s
     arithmetic, the series' and the card's (`cash_changed`) alike. Each list
     holds the account's own rows; `transfers` may hold others, which add
-    nothing. None when no balance is in force on `d`."""
+    nothing. None when no balance is in force on `d`. `entries` is the
+    statement lane (`CashEntry`), which moves cash and covers a flow's payment
+    when it is one (`_entry_effects`)."""
     anchor = dated.latest_on_or_before(anchors, d)
     if anchor is None:
         return None
     d_date = datetime.date.fromisoformat(d)
     lo = _parse(anchor.date)
     projected = in_base(anchor.amount, anchor.currency)
+    covers, entries_net = _entry_effects(
+        [e for e in (entries or []) if _parse(e.date) and lo < _parse(e.date) <= d_date],
+        in_base,
+    )
     for i in incomes:
         projected += _flow_sum_in_window(
             in_base(i.amount, i.currency), i.frequency,
             _parse(i.start_date), _parse(i.end_date), lo, d_date,
+            covers=covers, direction="in",
         )
     for e in expenses:
         projected -= _flow_sum_in_window(
             in_base(e.amount, e.currency), e.frequency,
             _parse(e.start_date), _parse(e.end_date), lo, d_date,
+            covers=covers, direction="out",
         )
+    projected += entries_net
     for t in dated.events_after(anchor, transfers, until=d):
         if t.to_institution_id == iid:
             projected += in_base(t.to_amount, t.to_currency)
         if t.from_institution_id == iid:
             projected -= in_base(t.amount, t.currency)
-    for t in dated.events_after(anchor, ledger, until=d):
+    for t in dated.events_after(anchor, ledger, until=d, when=lambda t: t.cash_date):
         moved = in_base(t.amount, t.currency)
         projected += -moved if t.kind == "buy" else moved
     return projected
@@ -919,12 +1030,20 @@ def cash_changed(
         t for t in db.scalars(select(models.Transaction))
         if (t.cash_institution_id or t.institution_id) == institution_id
     ]
+    entries = list(db.scalars(select(models.CashEntry).where(models.CashEntry.institution_id == institution_id)))
 
     days = {since}
     for row in (*stored_anchors, *new_anchors, *stored_transfers, *new_transfers, *ledger):
         day = _parse(row.date)
         if since <= day <= until:
             days.add(day)
+        # A ledger entry's money can arrive days after its trade (its
+        # `cash_date`), and the register moves that day too (PRD §4.3).
+        late = getattr(row, "cash_date", None)
+        if late is not None and late != row.date:
+            day = _parse(late)
+            if since <= day <= until:
+                days.add(day)
     for flow in (*incomes, *expenses):
         days.update(_flow_days(flow, since, until))
     ordered = sorted(days)
@@ -933,8 +1052,8 @@ def cash_changed(
     readings = []
     for day in ordered:
         d = day.isoformat()
-        before = _projected_cash(institution_id, d, in_base, stored_anchors, incomes, expenses, stored_transfers, ledger)
-        after = _projected_cash(institution_id, d, in_base, new_anchors, incomes, expenses, new_transfers, ledger)
+        before = _projected_cash(institution_id, d, in_base, stored_anchors, incomes, expenses, stored_transfers, ledger, entries)
+        after = _projected_cash(institution_id, d, in_base, new_anchors, incomes, expenses, new_transfers, ledger, entries)
         moved = (before is None) != (after is None) or (
             before is not None and abs(before - after) >= 0.005
         )
@@ -1016,7 +1135,7 @@ def compute_net_worth_series(
     # restated every point at a rate none of them had, and moved the whole line
     # each time the rate moved — the lie this series already refuses to tell
     # with today's quotes. One converter per date, all loaded together, and
-    # each point says which ECB day it was converted at.
+    # each point says which reference-rate day it was converted at.
     convs = fx.converters_on(db, all_dates)
     cash_by_date = _cash_totals_by_date(db, all_dates, inst_ids, convs)
 
@@ -1067,7 +1186,7 @@ def compute_portfolio(db: Session, live: bool = False) -> dict:
     per-symbol price failure leaves that row unpriced."""
     names = {i.id: i.name for i in db.scalars(select(models.Institution))}
     # ONE converter for the whole view. The projection used to make its own and
-    # throw it away, so a book value converted at an ECB rate could reach the
+    # throw it away, so a book value converted at a reference rate could reach the
     # screen while `fx_as_of` — the date of that very rate — stayed null.
     conv = fx.Converter(db)
     held = positions.project(db, conv)
@@ -1112,6 +1231,11 @@ def compute_portfolio(db: Session, live: bool = False) -> dict:
     total_realized = 0.0
     total_dividends = 0.0
     total_dividends_estimated = 0.0
+    # The estimated dividends with the AGE of the shares that earned each one
+    # (gross, days): what a declared dividend schedule is applied to
+    # (PRD §5.1). Collected from the same walks that collected the dividends
+    # themselves, so the two can never drift apart.
+    dividends_held_for: list[tuple[float, int]] = []
     as_of_dates: list[str] = []
     # When each ticker last paid, from the dividend answers the catch-up keeps:
     # what a row whose own history decides its dividends shows. Imported here
@@ -1125,12 +1249,13 @@ def compute_portfolio(db: Session, live: bool = False) -> dict:
         total_realized += p.realized_pl
         total_dividends += p.dividends
         total_dividends_estimated += p.dividends_estimated
+        dividends_held_for.extend(p.dividends_held)
         live_price = as_of = market = delta = delta_pct = currency = None
         quote = (
             quotes.get(p.symbol) if (p.symbol and p.quantity is not None) else None
         )
         if quote is not None:
-            # Market value converts to the base at the ECB rate. If the
+            # Market value converts to the base at the feed rate. If the
             # listing's currency is not known yet, or no rate is available for
             # it, the row stays UNPRICED rather than mixing currencies.
             currency = quote.get("currency")
@@ -1226,13 +1351,14 @@ def compute_portfolio(db: Session, live: bool = False) -> dict:
             realized=total_realized,
             dividends_estimated=total_dividends_estimated,
             dividends_recorded=total_dividends - total_dividends_estimated,
+            dividends_held_for=dividends_held_for,
         ),
         "unresolved_omissions": unaccounted["omissions"],
         "declared_instead": unaccounted["arrivals"],
         # And what no rate could be applied to at all, which is the same
         # converter's other half — see compute_summary.
         "unconverted": conv.unconverted_amounts(),
-        # ECB rate date, when any FX conversion was actually applied — to a
+        # reference-rate date, when any FX conversion was actually applied — to a
         # book value or to a market value, since both now run through the same
         # converter. A number restated at a rate says which rate.
         "fx_as_of": conv.used_as_of,

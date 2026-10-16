@@ -298,24 +298,24 @@ def _settles(t, named: dict[int, str]) -> str:
 
 
 def _render_rates(db: Session, base: str, portfolio: dict) -> list[str]:
-    """The ECB's rates the app keeps, those in force today, for every currency
+    """The feed's rates the app keeps, those in force today, for every currency
     on record that is not the base and every listing a position is priced in:
     one line, or none when everything is in the base.
 
     The totals were always converted at these and never said what they were:
     in the reader's second test round (2026-10-08) the chat answered that it
-    had no exchange rate for a dollar figure, with the app holding the ECB's."""
+    had no exchange rate for a dollar figure, with the app holding the feed's."""
     listings = {r["currency"] for r in portfolio["rows"] if r["currency"]}
     published, rates, missing = fx.rates_for(db, crud.get_currencies_on_record(db) | listings)
     said = []
     if rates:
         listed = ", ".join(f"{rate:.10g} {code}" for code, rate in rates.items())
         said.append(
-            f"Exchange rates: the ECB's reference rates, which the app keeps; those "
+            f"Exchange rates: the reference rates, which the app keeps; those "
             f"in force today were published on {published}: 1 {base} = {listed}."
         )
     if missing:
-        said.append(f"The ECB publishes no rate for {', '.join(missing)}.")
+        said.append(f"The feed publishes no rate for {', '.join(missing)}.")
     return [" ".join(said)] if said else []
 
 
@@ -800,7 +800,7 @@ def build_context(db: Session) -> str:
             # Each figure with its currency: the price is the listing's, the
             # amount the account's, and for a purchase across two currencies
             # the amount is a sum fixed at one day's rate — which the line says.
-            rate = f" at the ECB rate of {t.fx_as_of}" if t.fx_as_of else ""
+            rate = f" at the feed rate of {t.fx_as_of}" if t.fx_as_of else ""
             price = (
                 f"@ {t.unit_price:.2f} {t.price_currency} "
                 if t.price_currency

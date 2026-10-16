@@ -156,7 +156,7 @@ def test_a_rate_cache_a_week_old_does_not_stop_a_read(client, monkeypatch):
 
     picture = _call(build_server(_db_file()), "get_financial_picture")
     assert "# User financial situation" in _text(picture)
-    # Not merely "it did not crash": a read-only reader must not go to the ECB
+    # Not merely "it did not crash": a read-only reader must not go to the feed
     # either. Fetching and then failing to store would spend a network call per
     # tool call, for ever, to learn the same thing each time.
     assert reached == [], "a session that cannot write still went to the network"

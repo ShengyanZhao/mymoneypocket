@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api", tags=["prices"])
 def get_fx_rates(
     refresh: bool = False, db: Session = Depends(get_db)
 ) -> list[schemas.FxRateRead]:
-    """The ECB reference rates in force today against the base (units per 1
+    """The feed reference rates in force today against the base (units per 1
     base): the latest published day, asked for at most once a day. Empty until
     the first successful fetch; ?refresh=true asks again. Each row names its
     base and its day, so a rate is never a bare number here either."""

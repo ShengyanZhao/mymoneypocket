@@ -10,7 +10,7 @@ which `_fetch_dividends` used to iterate as (column, Series) pairs: a
 listing was found naming one (52 tickers, Vietnam included, the case yfinance's
 own comment names), and an unnamed amount is the listing's: the Vanguard
 All-World fund's dividend of 2026-09-17 in dollars (VWRD.L) over the same in
-euros (VWRL.MI) is 1.1486, the ECB's EUR/USD that day 1.1481. So a named
+euros (VWRL.MI) is 1.1486, the feed's EUR/USD that day 1.1481. So a named
 currency is the only one that is not the listing's, and it is recorded as
 named, converted like any other amount. One event that cannot be read is said
 on its own ex-date; it does not take the rest of the history with it.
@@ -216,7 +216,7 @@ def yfinance_answers(monkeypatch):
 
 @pytest.fixture()
 def rates(monkeypatch):
-    """`rates(table)`: the ECB answers `table` ({day: {currency: per euro}}),
+    """`rates(table)`: the feed answers `table` ({day: {currency: per euro}}),
     or refuses when it is None."""
 
     def answer(table) -> None:
@@ -293,7 +293,7 @@ def test_one_event_that_cannot_be_read_does_not_take_the_history_with_it(
 
 def test_a_named_currency_is_kept_with_the_days_answer(client, yfinance_answers, rates, on):
     """Brief X's rule with a named currency: the euro dividend waits while the
-    ECB has no rate for its day, and the next catch-up writes it from the
+    the feed has no rate for its day, and the next catch-up writes it from the
     day's kept answer, still in euros, without asking Yahoo again."""
     iid = _account(client, cash_in="USD")
     _hold(client, iid, "ADRX", policy="dist")

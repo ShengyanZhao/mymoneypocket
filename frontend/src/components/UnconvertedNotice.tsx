@@ -1,4 +1,5 @@
 import type { UnconvertedAmount } from "../api/dashboard";
+import { useT } from "../i18n/useT.ts";
 
 /* Amounts that reached a total without being converted, because the app has no
    rate for the currency they are written in.
@@ -16,7 +17,7 @@ import type { UnconvertedAmount } from "../api/dashboard";
 
      - a typo (`Doll`, `EURO`) — correctable on the row, and refused outright
        from now on, so only rows written before the shape check can show it;
-     - a real currency the ECB does not quote (`TWD`, `GBp`) — nothing is wrong
+     - a real currency the feed does not quote (`TWD`, `GBp`) — nothing is wrong
        with the row and nobody can convert it, so the figure simply is in
        another unit and the total says so rather than pretending.
 
@@ -66,33 +67,29 @@ export function UnconvertedNotice({
   items: UnconvertedAmount[];
   baseCurrency: string;
 }) {
+  const tr = useT();
   if (items.length === 0) return null;
+  // The verb that follows the list agrees with how many amounts are in it, not
+  // with how many currencies: one row of three amounts is still "have".
+  const amounts = items.reduce((sum, u) => sum + u.count, 0);
   return (
     <div
       className="border-l-2 border-warn bg-warn-tint px-3 py-2 text-xs text-warn"
-      title="No exchange rate is known for these currencies, so each amount written in one of them is counted at face value, as if it were already in the base currency. The figures above are therefore in more than one unit."
+      title={tr("unconverted.title")}
     >
       {items.map((u, i) => (
         <span key={u.currency ?? `none-${i}`}>
           {i > 0 && " · "}
           <b>
-            {u.count} {u.count === 1 ? "amount" : "amounts"} in{" "}
-            {u.currency ?? "no stated currency"}
+            {tr("unconverted.amounts", { count: u.count, currency: u.currency ?? tr("unconverted.noCurrency") })}
           </b>
           {": "}
-          {plain(u.amount)} as written
+          {tr("unconverted.asWritten", { amount: plain(u.amount) })}
         </span>
       ))}{" "}
-      {items.length === 1 && items[0].count === 1 ? "has" : "have"} no exchange
-      rate here, so {items.length === 1 && items[0].count === 1 ? "it is" : "each is"}{" "}
-      counted at face value wherever it appears above.
+      {tr("unconverted.rate", { count: amounts })}
       <div className="mt-0.5 text-ink-soft">
-        Those totals are the rows added up, not the amount any figure above is
-        wrong by: a cost is counted beside the value it belongs to, and a debt
-        counts here while it subtracts there. A mistyped code → correct it on
-        the row. A real currency the ECB publishes no rate for → nothing can
-        convert it, and the figures above are in more than one unit alongside{" "}
-        {baseCurrency}.
+        {tr("unconverted.note", { baseCurrency })}
       </div>
     </div>
   );

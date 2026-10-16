@@ -40,6 +40,8 @@ so a converted figure could reach the screen with no rate date attached to it.
 
 from __future__ import annotations
 
+import datetime
+from collections import deque
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 
@@ -226,6 +228,13 @@ class Position:
     # Set when the hand-typed currency disagrees with the listing's own, so the
     # UI can point at a field worth correcting.
     currency_note: str | None
+    # The estimated dividends as (gross, days the shares that earned them had
+    # been held), from `PositionState.dividends_held`: what a declared dividend
+    # schedule is applied to (PRD §5.1). A closed position carries none — its
+    # walk collects no dividends after the close, the same reason its
+    # `dividends` is zero — hence the default, the one field that can be
+    # legitimately absent rather than merely unset.
+    dividends_held: tuple[tuple[float, int], ...] = ()
 
     @property
     def current_value(self) -> float:
@@ -276,6 +285,15 @@ class PositionState:
     # still marked estimated, or an opening the caller said was. Cleared when
     # the walk empties the position, since no unit is left behind it.
     cost_estimated: bool = False
+    # The estimated dividends as (gross amount, days the shares that earned it
+    # had been held) — the input the declared dividend schedule is applied to
+    # (PRD §4.1/§5.1, `tax.estimate`). Each dividend's cash is split across
+    # the open lots in proportion to their units, aged first-bought first-aged
+    # (`replay`); a share with no known purchase date counts as held from the
+    # opening the caller named (`start_date`), which is the earliest date this
+    # walk has for it. Only the ESTIMATED rows appear here, for the reason
+    # `tax.estimate` applies its rate only to them.
+    dividends_held: tuple[tuple[float, int], ...] = ()
 
 
 # --- The projection ---------------------------------------------------------
@@ -287,6 +305,7 @@ def replay(
     start_qty: float = 0.0,
     start_book: float = 0.0,
     start_estimated: bool = False,
+    start_date: str | None = None,
     until: str | None = None,
     amount_of: Callable[[models.Transaction], float] | None = None,
 ) -> PositionState:
@@ -310,6 +329,21 @@ def replay(
     wants everything. A boundary that turns on < against <= is not something a
     reader should have to recover by comparing three copies of a loop.
 
+    What moves when is `quantity_date`, not `date` (PRD §4.3): a buy of an
+    OTC fund takes its units on the NAV day its confirmation names, days
+    after the trade paid for them, and a walk that applied it at the trade
+    would hand the position units nobody had confirmed yet. The sort follows
+    the same clock, so a sell made while a buy is still unconfirmed meets the
+    position it actually met.
+
+    `start_date` is when the opening units are taken to have been bought, for
+    AGING only: the declared dividend schedule (PRD §5.1) needs to know how
+    old the shares behind each dividend were, and a photograph's units have no
+    purchase on record — the situation is the earliest date this walk has for
+    them. None leaves them undated, which ages them at the schedule's top
+    tier (`tax._tier_rate`, days 0) rather than presuming an exemption nobody
+    recorded.
+
     `start_estimated` says the opening's cost was itself estimated. A buy
     still marked estimated (a plan's buy at the market close, until the
     reader corrects it) makes the units held estimated too, whatever the
@@ -324,8 +358,17 @@ def replay(
     qty, book = start_qty, start_book
     realized = dividends = dividends_estimated = 0.0
     estimated = start_estimated
-    for t in sorted(entries, key=lambda t: (t.date, t.id)):
-        if until is not None and t.date >= until:
+    # The ages of the units behind each dividend, tracked beside the money and
+    # never instead of it: a FIFO queue of (units, the day they landed). Sells
+    # and closes take from the front — the shares that have been held longest
+    # are the ones a disposal is matched to first (先进先出), which is also how
+    # a Chinese broker ages a holding period.
+    lots: deque[tuple[float, str | None]] = deque()
+    if start_qty > 0:
+        lots.append((start_qty, start_date))
+    held: list[tuple[float, int]] = []
+    for t in sorted(entries, key=lambda t: (t.quantity_date, t.id)):
+        if until is not None and t.quantity_date >= until:
             break
         cash = amount_of(t) if amount_of is not None else t.amount
         if t.kind == "sell":
@@ -334,6 +377,7 @@ def replay(
             book -= sold * avg
             qty = max(qty - t.quantity, 0.0)
             realized += cash - sold * avg
+            _drain(lots, sold)
             if qty <= 0:
                 estimated = False
         elif t.kind == "close":
@@ -341,6 +385,7 @@ def replay(
             # average, so the basis is the entire book the entries built.
             realized += cash - book
             qty = book = 0.0
+            lots.clear()
             estimated = False
         elif t.kind == "dividend":
             dividends += cash
@@ -351,12 +396,49 @@ def replay(
             # not be filtered by the anchor the way these entries are.
             if t.estimated:
                 dividends_estimated += cash
+                # Aged across the shares that earned it, in proportion: one
+                # dividend check covers every lot held on its ex-date, and
+                # each lot's share of it has been held its own number of days.
+                base = sum(units for units, _ in lots)
+                ex = t.quantity_date
+                for units, landed in lots:
+                    amount = cash * (units / base) if base > 0 else cash
+                    held.append((amount, _age(ex, landed)))
+                if not lots:
+                    held.append((cash, 0))  # nothing dated behind it: top tier
         else:  # buy
             qty += t.quantity
             book += cash
+            lots.append((t.quantity, t.quantity_date))
             if t.estimated:
                 estimated = True
-    return PositionState(qty, book, realized, dividends, dividends_estimated, estimated)
+    return PositionState(
+        qty, book, realized, dividends, dividends_estimated, estimated, tuple(held)
+    )
+
+
+def _drain(lots: deque[tuple[float, str | None]], units: float) -> None:
+    """Take `units` off the front of the FIFO queue: the oldest shares are the
+    ones a disposal sells (and the ones its holding period is measured on)."""
+    while units > 0 and lots:
+        held_units, landed = lots[0]
+        if held_units <= units:
+            lots.popleft()
+            units -= held_units
+        else:
+            lots[0] = (held_units - units, landed)
+            units = 0
+
+
+def _age(ex_date: str, landed: str | None) -> int:
+    """Whole days a share behind a dividend had been held at its ex-date, or
+    0 for one whose landing day nobody recorded — the top tier of any
+    schedule, and the honest reading of a share with no known purchase."""
+    if not landed:
+        return 0
+    return (
+        datetime.date.fromisoformat(ex_date) - datetime.date.fromisoformat(landed)
+    ).days
 
 
 @dataclass(frozen=True, slots=True)
@@ -405,7 +487,7 @@ def project(
     absent from the latest snapshot create new positions. Fully-sold positions
     disappear from the list but keep their realized P/L / dividends in the
     rows that produced them. Book values are in the base: a holding recorded in
-    another currency converts at the ECB rate BEFORE the ledger (base cash
+    another currency converts at the feed rate BEFORE the ledger (base cash
     amounts) is applied on top.
 
     Pass `conv` to share one converter with the rest of a computation — its
@@ -470,6 +552,10 @@ def project(
             fin_latest.get(inst_id),
             (t for t in txs if t.institution_id == inst_id and t.symbol == symbol),
             until=day,
+            # Units count when they LAND (`quantity_date`): a buy traded
+            # before a photograph but confirmed after it is not in the photo
+            # and must count, and one confirmed before it must not (PRD §4.3).
+            when=lambda t: t.quantity_date,
         )
 
     def _closure(inst_id: int | None, h: models.Holding, anchor: str):
@@ -479,7 +565,7 @@ def project(
         not — because the rows that most need an exit are exactly the ones no
         ticker describes, and until now their only way out was to vanish from a
         photograph, which is the silent deletion this is meant to replace."""
-        for t in dated.events_after(anchor, txs, until=day):
+        for t in dated.events_after(anchor, txs, until=day, when=lambda t: t.quantity_date):
             if t.kind != "close" or t.institution_id != inst_id:
                 continue
             if (h.symbol and t.symbol == h.symbol) or t.asset_name == h.asset_name:
@@ -515,6 +601,7 @@ def project(
             book = recorded_cost if recorded_cost is not None else from_photo
             cost_known_from_photo = recorded_cost is not None
             realized = dividends = dividends_estimated = 0.0
+            dividends_held: tuple[tuple[float, int], ...] = ()
             # True once a recorded purchase contributes to the book: only then
             # is "average cost" a price actually paid rather than the price at
             # which a snapshot happened to be taken.
@@ -552,11 +639,16 @@ def project(
                     start_qty=h.quantity,
                     start_book=opening,
                     start_estimated=recorded is not None and bool(h.cost_estimated),
+                    # The situation is the earliest date this app has for the
+                    # units it recorded: the age their dividends are measured
+                    # from (PRD §5.1).
+                    start_date=snap.date,
                     amount_of=cash,
                 )
                 quantity, book = walked.quantity, walked.book
                 realized, dividends = walked.realized_pl, walked.dividends
                 dividends_estimated = walked.dividends_estimated
+                dividends_held = walked.dividends_held
                 # The same walk, opened at what the photograph SAID instead of
                 # at what was paid. Two openings, one set of entries: a buy adds
                 # its cost to both, a sell removes units at each walk's own
@@ -614,6 +706,7 @@ def project(
                     cost_estimated=cost_estimated,
                     observed_on=snap.date,
                     closed_on=closed_on,
+                    dividends_held=dividends_held,
                     currency_note=(
                         f"recorded as {h.currency}, but {h.symbol} trades in {quote_ccy}"
                         if (quote_ccy and h.currency and h.quantity is not None
@@ -635,7 +728,7 @@ def project(
     ledger_born = {
         (t.institution_id, t.symbol)
         for t in txs
-        if t.symbol and t.date <= day
+        if t.symbol and t.quantity_date <= day
     } - seen
     for inst_id, symbol in sorted(ledger_born, key=lambda k: (k[0] or 0, k[1])):
         later = _later_txs(inst_id, symbol)
@@ -651,14 +744,14 @@ def project(
         # `_closure` iterates snapshot holdings, and this one is in none.
         closed = max(
             (t for t in later if t.kind == "close"),
-            key=lambda t: (t.date, t.id),
+            key=lambda t: (t.quantity_date, t.id),
             default=None,
         )
         qty, book = walked.quantity, walked.book
         realized, divs = walked.realized_pl, walked.dividends
         if closed is None and qty <= 0 and not realized and not divs:
             continue
-        latest = max(later, key=lambda t: (t.date, t.id))
+        latest = max(later, key=lambda t: (t.quantity_date, t.id))
         out.append(
             Position(
                 institution_id=inst_id,
@@ -683,9 +776,10 @@ def project(
                 cost_estimated=walked.cost_estimated,
                 # Born from the ledger: its quantity was last confirmed by its
                 # most recent entry, not by any photograph.
-                observed_on=latest.date,
-                closed_on=closed.date if closed is not None else None,
+                observed_on=latest.quantity_date,
+                closed_on=closed.quantity_date if closed is not None else None,
                 currency_note=None,
+                dividends_held=walked.dividends_held,
             )
         )
 

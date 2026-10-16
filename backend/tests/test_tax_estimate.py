@@ -15,6 +15,8 @@ diligence, which this project has already paid for once (f8c8b5b).
 
 from __future__ import annotations
 
+import datetime
+
 from sqlalchemy import text
 
 from app import advisor, prices, tax
@@ -370,10 +372,21 @@ def test_defaults_are_offered_and_never_applied_behind_the_reader(client):
     assert _portfolio(client)["tax_estimate"]["configured"] is False
 
     known = {c["country"]: c for c in body["known_countries"]}
-    assert set(known) == {"Italy", "Germany", "France"}
+    assert set(known) == {"Italy", "Germany", "France", "China"}
     assert known["Italy"]["capital_gains_rate"] == 26.0
     assert known["Germany"]["capital_gains_rate"] == 26.375
     assert known["France"]["capital_gains_rate"] == 31.4
+    # China ships NO flat dividend rate: its rate is a schedule by holding
+    # period, and one box cannot hold three numbers (PRD §5.1). The schedule
+    # arrives as data for the reader to adopt — adopted or not, naming the
+    # country set nothing, same as the flat rates above.
+    assert known["China"]["dividend_withholding_rate"] is None
+    assert known["China"]["dividend_tiers"] == [
+        {"days_max": 30, "rate": 20.0},
+        {"days_max": 365, "rate": 10.0},
+        {"days_max": None, "rate": 0.0},
+    ]
+    assert body["dividend_tiers"] is None
     # Every shipped rate names the regime it came from and what it flattens.
     assert all(c["regime"] and c["omits"] for c in body["known_countries"])
 
@@ -561,19 +574,219 @@ def test_with_no_rate_and_nothing_to_tax_the_context_stays_silent(client):
 
 
 def test_there_is_exactly_one_rule_per_figure(client):
-    """A guard on the brief's own boundary rather than on an output.
+    """A guard on the brief's own boundary rather than on an output — and on
+    the one place that boundary was deliberately crossed (PRD §5.1, the
+    amendment at the top of app/tax.py).
 
-    The moment this table grows a rule keyed by instrument — a bond rate, a
-    fund wrapper, a holding period — the estimate has become a tax engine with
-    none of an engine's obligations, and the honest move is to delete the
-    module instead of growing it. `Default` carrying exactly two rates and a
-    prose note is what keeps that structural rather than a matter of
-    discipline."""
+    The paragraph this test was written from named a holding-period rule as
+    the edit that ends the module. China's dividend tax IS a holding-period
+    rule — 20%/10%/免征 is the headline — so the schedule was let in as the
+    single exception, shaped so the rest of the boundary still holds
+    STRUCTURALLY rather than by discipline:
+
+    - one figure takes EITHER a flat rate OR a schedule's step, never both: a
+      flat rate typed beside a schedule wins (`tax.estimate`);
+    - `Default` still carries nothing but rates and prose — a schedule is
+      data (days-held -> rate), not a rule keyed by what an instrument IS, so
+      there is still no second rule in here;
+    - every entry still names its carve-outs in `omits`, which is what keeps
+      this table honest at any width.
+
+    What would still end the module: a bond rate, a fund wrapper, anything
+    keyed by instrument or account type. Those stay unrepresentable on
+    purpose, and this asserts it."""
     import dataclasses
 
     fields = {f.name for f in dataclasses.fields(tax.Default)}
-    assert fields == {"capital_gains", "dividend_withholding", "regime", "omits"}
+    assert fields == {
+        "capital_gains",
+        "dividend_withholding",
+        "regime",
+        "omits",
+        "dividend_tiers",
+    }
     for name, d in tax.DEFAULTS.items():
         assert isinstance(d.capital_gains, float)
-        assert isinstance(d.dividend_withholding, float)
+        assert d.dividend_withholding is None or isinstance(d.dividend_withholding, float)
+        if d.dividend_tiers is not None:
+            # A schedule stands in for the flat rate on the SAME figure rather
+            # than adding a rule beside it, and its last step is the uncapped
+            # tail — one figure, one answer, at every holding age.
+            assert d.dividend_withholding is None
+            assert d.dividend_tiers[-1][0] is None
         assert d.omits, f"{name} flattens carve-outs and must name them"
+
+
+# --- The schedule (PRD §5.1) ----------------------------------------------
+
+
+CN = tax.Rates(
+    country="China",
+    capital_gains=0.0,
+    dividend_withholding=None,
+    dividend_tiers=((30, 20.0), (365, 10.0), (None, 0.0)),
+)
+
+
+def test_a_declared_schedule_taxes_each_dividend_at_its_own_tier():
+    """A股股息红利差别化: 20% held a month or less, 10% up to a year, nothing
+    beyond — applied to each dividend at the age of the shares that earned it,
+    and the split shown rather than folded into one figure."""
+    est = tax.estimate(
+        CN,
+        realized=1000.0,
+        dividends_estimated=300.0,
+        dividends_recorded=0.0,
+        dividends_held_for=[(100.0, 20), (100.0, 200), (100.0, 800)],
+    )
+    assert est["capital_gains_tax"] == 0.0  # A 股转让价差暂免
+    assert est["dividend_withholding"] == 30.0  # 20 + 10 + 0
+    assert est["dividends_by_rate"] == [
+        {"rate": 0.0, "amount": 100.0},
+        {"rate": 10.0, "amount": 100.0},
+        {"rate": 20.0, "amount": 100.0},
+    ]
+    assert est["total"] == 30.0
+    assert est["missing_rates"] == []
+
+
+def test_the_tier_boundaries_are_the_law_s_own():
+    """1 个月以内 20%, 1 个月以上至 1 年 10%, 1 年以上免征: the caps are
+    inclusive, and only a day past one moves down (财税[2015]101号)."""
+    tiers = CN.dividend_tiers
+    assert tax._tier_rate(tiers, 0) == 20.0
+    assert tax._tier_rate(tiers, 30) == 20.0
+    assert tax._tier_rate(tiers, 31) == 10.0
+    assert tax._tier_rate(tiers, 365) == 10.0
+    assert tax._tier_rate(tiers, 366) == 0.0
+
+
+def test_a_flat_rate_typed_beside_a_schedule_wins():
+    """The more specific declaration: one number the reader typed beats any
+    schedule they adopted."""
+    flat = tax.Rates(
+        country="China",
+        capital_gains=0.0,
+        dividend_withholding=25.0,
+        dividend_tiers=CN.dividend_tiers,
+    )
+    est = tax.estimate(
+        flat,
+        realized=0.0,
+        dividends_estimated=300.0,
+        dividends_recorded=0.0,
+        dividends_held_for=[(100.0, 20), (200.0, 800)],
+    )
+    assert est["dividend_withholding"] == 75.0
+    assert est["dividends_by_rate"] == []
+
+
+def test_a_schedule_with_no_ages_picks_no_tier_and_says_so():
+    """A rate cannot be picked without the fact it keys on. The half is named
+    in `missing_rates` exactly like an unset rate — the reader is told what to
+    supply, not shown a figure the schedule never chose."""
+    est = tax.estimate(
+        CN, realized=0.0, dividends_estimated=300.0, dividends_recorded=0.0
+    )
+    assert est["dividend_withholding"] is None
+    assert est["missing_rates"] == ["dividend withholding"]
+
+
+def test_a_declared_schedule_round_trips_through_the_settings(client):
+    body = _set_rates(
+        client,
+        country="China",
+        capital_gains_rate=0.0,
+        dividend_tiers=[
+            {"days_max": 30, "rate": 20.0},
+            {"days_max": 365, "rate": 10.0},
+            {"days_max": None, "rate": 0.0},
+        ],
+    )
+    assert body["dividend_tiers"] == [
+        {"days_max": 30, "rate": 20.0},
+        {"days_max": 365, "rate": 10.0},
+        {"days_max": None, "rate": 0.0},
+    ]
+    cleared = _set_rates(client)
+    assert cleared["dividend_tiers"] is None
+
+
+def test_a_dividend_is_aged_across_the_shares_that_earned_it():
+    """Where the ages come from (PRD §4.1): one dividend check covers every
+    lot held on its ex-date, and each lot's share of it has been held its own
+    number of days — first bought, first aged (先进先出). The opening units of
+    a photograph carry the photograph's date, the earliest the walk knows."""
+    from app import models, positions
+
+    txs = [
+        models.Transaction(
+            kind="buy",
+            date="2026-01-01",
+            quantity=10.0,
+            unit_price=2.0,
+            amount=20.0,
+            currency="CNY",
+            asset_name="易方达优质精选混合",
+            symbol="110011",
+        ),
+        models.Transaction(
+            kind="dividend",
+            date="2026-03-31",
+            quantity=20.0,
+            unit_price=5.0,
+            amount=100.0,
+            currency="CNY",
+            asset_name="易方达优质精选混合",
+            symbol="110011",
+            estimated=True,
+        ),
+    ]
+    walked = positions.replay(
+        txs, start_qty=10.0, start_date="2025-01-01", start_book=20.0
+    )
+    split = dict(
+        (days, amount) for amount, days in walked.dividends_held
+    )
+    old = (datetime.date(2026, 3, 31) - datetime.date(2025, 1, 1)).days
+    new = (datetime.date(2026, 3, 31) - datetime.date(2026, 1, 1)).days
+    assert split[old] == 50.0  # the photograph's units, aged from the photo
+    assert split[new] == 50.0  # January's purchase, aged from its own day
+
+
+def test_a_disposal_takes_the_oldest_shares_first():
+    """FIFO, both for the age and for what is left: the shares sold are the
+    ones held longest, which is what a Chinese broker's 持股期限 assumes."""
+    from app import models, positions
+
+    txs = [
+        models.Transaction(
+            kind="sell",
+            date="2025-06-01",
+            quantity=5.0,
+            unit_price=3.0,
+            amount=15.0,
+            currency="CNY",
+            asset_name="易方达优质精选混合",
+            symbol="110011",
+        ),
+        models.Transaction(
+            kind="dividend",
+            date="2026-03-31",
+            quantity=5.0,
+            unit_price=2.0,
+            amount=10.0,
+            currency="CNY",
+            asset_name="易方达优质精选混合",
+            symbol="110011",
+            estimated=True,
+        ),
+    ]
+    walked = positions.replay(
+        txs, start_qty=10.0, start_date="2025-01-01", start_book=10.0
+    )
+    # The sale took the oldest half; what paid the dividend is the rest, still
+    # aged from the opening.
+    days = {d for _, d in walked.dividends_held}
+    old = (datetime.date(2026, 3, 31) - datetime.date(2025, 1, 1)).days
+    assert days == {old}

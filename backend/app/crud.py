@@ -162,7 +162,7 @@ def _decided(data: BaseModel, payload: dict) -> dict:
     """The part of a built row this request is entitled to write.
 
     A schema field is written when the request sent it. A key the schema does
-    not own is one crud worked out for itself — today only `fx_as_of`, the ECB
+    not own is one crud worked out for itself — today only `fx_as_of`, the feed
     day that turned quantity x price into an amount — and a builder puts one in
     the payload only when this request decided the figure it explains. So its
     presence IS the decision, and it travels with that figure rather than being
@@ -767,7 +767,7 @@ def _transfer_columns(db: Session, row: dict, sent: Collection[str]) -> dict:
     """Transfer columns, with what arrived filled in.
 
     A stated `to_amount` is kept as typed, with `fx_as_of` empty — it came from
-    the destination's statement, and the bank's rate is not the ECB's. Left
+    the destination's statement, and the bank's rate is not the feed's. Left
     out, it is worked out from `amount` by `fx.convert_on` at the rate final
     for the transfer's DATE: the same sum when the currencies are one (no rate
     is used and none is recorded), and otherwise a sum in cents with the rate's
@@ -1402,7 +1402,7 @@ def change_base(db: Session, wanted: str) -> str:
 
     One function for the two doors, the Profile page's Save and the chat's
     card (brief AN), so neither can drift from the other. Upper-cased; the same
-    base again changes nothing; a code the ECB's feed does not quote is refused
+    base again changes nothing; a code the reference-rate feed does not quote is refused
     (`fx.BaseNotQuoted`, the request's 422), since no total could be converted
     into it; otherwise the new base's rates are fetched and stored from the
     oldest recorded day before the setting changes, or nothing changes
@@ -1414,7 +1414,7 @@ def change_base(db: Session, wanted: str) -> str:
     available = fx.feed_currencies(db)
     if wanted not in available:
         raise fx.BaseNotQuoted(
-            f"{wanted} is not a currency the ECB rate feed quotes, so no total could "
+            f"{wanted} is not a currency the {fx.source_name()} reference-rate feed quotes, so no total could "
             f"be converted into it. Choose one of: {', '.join(available)}."
         )
     fx.choose_base(db, wanted, since=earliest_dated_record(db))
@@ -1437,7 +1437,7 @@ def earliest_dated_record(db: Session) -> str | None:
 
 
 def get_fx_rate_rows(db: Session, base: str, day: str) -> list[models.FxRate]:
-    """The ECB rates published for `day` against `base`, ordered by currency."""
+    """The reference rates published for `day` against `base`, ordered by currency."""
     stmt = (
         select(models.FxRate)
         .where(models.FxRate.base == base, models.FxRate.as_of == day)
@@ -1891,3 +1891,146 @@ def update_goal(
     db: Session, goal_id: int, data: schemas.GoalCreate
 ) -> models.Goal | None:
     return _update(db, models.Goal, goal_id, data)
+
+
+# --- Cash entries & statement imports -------------------------------------
+
+
+def get_cash_entries(
+    db: Session,
+    *,
+    institution_id: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    batch_id: int | None = None,
+) -> list[models.CashEntry]:
+    """Every stored movement, newest first, narrowed by account, window or
+    import batch. The four filters are what the page and the batch view each
+    ask for; one function because they never disagree about the order."""
+    stmt = select(models.CashEntry)
+    if institution_id is not None:
+        stmt = stmt.where(models.CashEntry.institution_id == institution_id)
+    if batch_id is not None:
+        stmt = stmt.where(models.CashEntry.import_batch_id == batch_id)
+    if date_from is not None:
+        stmt = stmt.where(models.CashEntry.date >= date_from)
+    if date_to is not None:
+        stmt = stmt.where(models.CashEntry.date <= date_to)
+    stmt = stmt.order_by(models.CashEntry.date.desc(), models.CashEntry.id.desc())
+    return list(db.scalars(stmt))
+
+
+def get_cash_entry(db: Session, entry_id: int) -> models.CashEntry | None:
+    return db.get(models.CashEntry, entry_id)
+
+
+def create_cash_entry(db: Session, data: schemas.CashEntryCreate) -> models.CashEntry:
+    """One movement typed by hand. No `external_id`, no batch: what an import
+    writes goes through `commit_import` and carries both."""
+    return _create(db, models.CashEntry(**_columns(data)))
+
+
+def update_cash_entry(
+    db: Session, entry_id: int, data: schemas.CashEntryUpdate
+) -> models.CashEntry | None:
+    """Correct the READING of a row (category, counterparty, channel, note).
+    Its money and date are not settable here — see `CashEntryUpdate`."""
+    return _update(db, models.CashEntry, entry_id, data, drop=("date", "direction", "amount", "currency"))
+
+
+def delete_cash_entry(db: Session, entry_id: int) -> bool:
+    return _delete(db, db.get(models.CashEntry, entry_id))
+
+
+def known_external_ids(db: Session, institution_id: int, ids: Collection[str]) -> set[str]:
+    """Which of `ids` this account has already imported. The whole of an
+    import's idempotency in one read: the same file twice finds every row here
+    and writes nothing the second time."""
+    wanted = {i for i in ids if i}
+    if not wanted:
+        return set()
+    rows = db.scalars(
+        select(models.CashEntry.external_id).where(
+            models.CashEntry.institution_id == institution_id,
+            models.CashEntry.external_id.in_(list(wanted)),
+        )
+    )
+    return {r for r in rows if r}
+
+
+def commit_import(db: Session, data: schemas.ImportCommit) -> tuple[models.ImportBatch, int, int]:
+    """Write a confirmed import as ONE batch: the entries, and the marks on the
+    pairs the reader confirmed. Returns (batch, written, duplicates_skipped).
+
+    Deduplication is by `external_id` and is checked HERE, against the store,
+    not only against the file: two imports of overlapping statements meet in
+    the database. Rows already present are skipped and counted on the batch,
+    never overwritten — the earlier row may have been corrected by hand since,
+    and a re-import is not a reason to lose that.
+
+    One commit for the batch and everything in it: an import that fails
+    halfway writes nothing, because a partial statement is worse than none."""
+    known = known_external_ids(db, data.institution_id, [c.external_id for c in data.candidates])
+    leg_indices = {i for pair in data.pair_indices for i in pair}
+
+    batch = models.ImportBatch(
+        source=data.source,
+        filename=data.filename,
+        rows_seen=len(data.candidates),
+        date_from=min((c.date.isoformat() for c in data.candidates), default=None),
+        date_to=max((c.date.isoformat() for c in data.candidates), default=None),
+    )
+    db.add(batch)
+
+    written = 0
+    duplicates = 0
+    for i, c in enumerate(data.candidates):
+        if c.external_id and c.external_id in known:
+            duplicates += 1
+            continue
+        db.add(
+            models.CashEntry(
+                batch=batch,
+                date=c.date.isoformat(),
+                institution_id=data.institution_id,
+                direction=c.direction,
+                amount=c.amount,
+                currency=c.currency,
+                category=c.category,
+                counterparty=c.counterparty,
+                channel=c.channel or data.source,
+                note=c.note,
+                external_id=c.external_id,
+                is_transfer_leg=i in leg_indices,
+            )
+        )
+        written += 1
+
+    batch.rows_written = written
+    batch.rows_duplicate = duplicates
+    commit(db)
+    db.refresh(batch)
+    return batch, written, duplicates
+
+
+def get_import_batches(db: Session) -> list[models.ImportBatch]:
+    """Every import, newest first — the list the reader undoes from."""
+    stmt = select(models.ImportBatch).order_by(models.ImportBatch.id.desc())
+    return list(db.scalars(stmt))
+
+
+def get_import_batch(db: Session, batch_id: int) -> models.ImportBatch | None:
+    return db.get(models.ImportBatch, batch_id)
+
+
+def delete_import_batch(db: Session, batch_id: int) -> bool:
+    """Undo one import: the batch and the rows it wrote go, everything the
+    reader typed around them stays. The rows' own ids are what makes that
+    separation possible — this is why an import is a batch and not a pile of
+    entries (`models.ImportBatch`)."""
+    batch = db.get(models.ImportBatch, batch_id)
+    if batch is None:
+        return False
+    db.delete(batch)  # entries follow by cascade
+    commit(db)
+    return True

@@ -20,17 +20,35 @@ from app.database import get_db
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
+def _tiers_out(
+    tiers: tuple[tuple[int | None, float], ...] | None,
+) -> list[schemas.DividendTier] | None:
+    return (
+        [schemas.DividendTier(days_max=cap, rate=rate) for cap, rate in tiers]
+        if tiers
+        else None
+    )
+
+
+def _tiers_in(tiers: list[schemas.DividendTier] | None) -> tuple[tuple[int | None, float], ...] | None:
+    return (
+        tuple((t.days_max, t.rate) for t in tiers) if tiers else None
+    )
+
+
 def _read(db: Session) -> schemas.TaxSettingsRead:
     rates = tax.read_rates(db)
     return schemas.TaxSettingsRead(
         country=rates.country,
         capital_gains_rate=rates.capital_gains,
         dividend_withholding_rate=rates.dividend_withholding,
+        dividend_tiers=_tiers_out(rates.dividend_tiers),
         known_countries=[
             schemas.TaxCountryDefault(
                 country=name,
                 capital_gains_rate=d.capital_gains,
                 dividend_withholding_rate=d.dividend_withholding,
+                dividend_tiers=_tiers_out(d.dividend_tiers),
                 regime=d.regime,
                 omits=d.omits,
             )
@@ -52,14 +70,16 @@ def get_tax_settings(db: Session = Depends(get_db)) -> schemas.TaxSettingsRead:
 def put_tax_settings(
     data: schemas.TaxSettings, db: Session = Depends(get_db)
 ) -> schemas.TaxSettingsRead:
-    """Replace all three. A null clears that key, which is how the reader says
+    """Replace them all. A null clears that key, which is how the reader says
     they do not know a rate — distinct from writing 0, which claims they pay
-    nothing."""
+    nothing. China's dividend schedule arrives here as `dividend_tiers` when
+    the reader adopts it; a flat dividend rate typed beside it wins."""
     tax.write_rates(
         db,
         country=data.country,
         capital_gains=data.capital_gains_rate,
         dividend_withholding=data.dividend_withholding_rate,
+        dividend_tiers=_tiers_in(data.dividend_tiers),
     )
     return _read(db)
 
@@ -73,7 +93,7 @@ def _base_read(db: Session) -> schemas.BaseCurrencySettingRead:
 @router.get("/base-currency", response_model=schemas.BaseCurrencySettingRead)
 def get_base_currency(db: Session = Depends(get_db)) -> schemas.BaseCurrencySettingRead:
     """The currency every total is shown in, and the ones it can become: the
-    currencies the ECB feed quotes, because a total can only be converted into
+    currencies the feed feed quotes, because a total can only be converted into
     a currency somebody publishes a rate for."""
     return _base_read(db)
 

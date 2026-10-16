@@ -115,7 +115,7 @@ def test_the_debit_stays_where_it_was_when_the_rate_moves(client, feed):
 
 
 def test_a_debit_copied_from_a_statement_is_kept_as_typed(client, feed):
-    """The broker's rate is not the ECB's, and fees in the spread are real
+    """The broker's rate is not the feed's, and fees in the spread are real
     money: the figure on the statement wins, and says it was not derived."""
     iid = _account(client)
 

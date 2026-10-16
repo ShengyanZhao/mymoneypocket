@@ -21,6 +21,7 @@ from app.i18n import LocaleMiddleware
 from app.routers import (
     accumulation_plans,
     cash_anchors,
+    cash_entries,
     chain,
     chat,
     dashboard,
@@ -36,6 +37,7 @@ from app.routers import (
     settings,
     snapshots,
     survey,
+    taxonomy,
     transactions,
     transfers,
     watchlist,
@@ -109,9 +111,11 @@ app.include_router(instruments.router)
 app.include_router(income_sources.router)
 app.include_router(expenses.router)
 app.include_router(cash_anchors.router)
+app.include_router(cash_entries.router)
 app.include_router(transfers.router)
 app.include_router(dashboard.router)
 app.include_router(settings.router)
+app.include_router(taxonomy.router)
 app.include_router(survey.router)
 app.include_router(goals.router)
 app.include_router(chain.router)

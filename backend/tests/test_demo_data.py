@@ -17,15 +17,30 @@ from pathlib import Path
 
 import pytest
 
-from app import demo
+from app import demo, fx, models
+from app.database import SessionLocal
 
 DAY = datetime.date(2026, 10, 6)
 BACKEND = Path(__file__).resolve().parent.parent
 
 
+def _start_as_a_new_file():
+    """The state `demo.build` finds: a file that has never had a base chosen.
+
+    The suite writes the euro in for itself (conftest `euro_base`), which is
+    right for its own records and wrong here: a brand-new demo.db has no such
+    row, and it is that absence which makes `populate` write renminbi without
+    asking any feed what a euro was worth.
+    """
+    with SessionLocal() as db:
+        db.query(models.Setting).filter(models.Setting.key == fx.BASE_CURRENCY_KEY).delete()
+        db.commit()
+
+
 def test_the_demo_is_built_through_the_api_with_no_network(client):
     """conftest refuses every outside call, so a build that asked Yahoo or the
-    ECB for anything would raise here instead of passing."""
+    the feed for anything would raise here instead of passing."""
+    _start_as_a_new_file()
     ids = demo.populate(client, DAY)
 
     names = sorted(i["name"] for i in client.get("/api/institutions").json())
@@ -44,6 +59,7 @@ def test_the_demo_is_built_through_the_api_with_no_network(client):
 def test_every_date_in_the_demo_is_counted_back_from_the_day_it_is_built(client):
     """So the demo always ends today. The plan is the one thing in the future:
     it starts next month, so it has bought nothing and asks no price."""
+    _start_as_a_new_file()
     demo.populate(client, DAY)
     (plan,) = client.get("/api/accumulation-plans").json()
     assert plan["start_date"] == "2026-11-05"

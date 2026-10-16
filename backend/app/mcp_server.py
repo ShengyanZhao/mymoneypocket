@@ -13,7 +13,7 @@ through a card the reader confirms, and an external client has no interface to
 show one. A server that could write would have to invent consent, and the only
 honest way not to invent it is to be unable to write at all. The `read_only`
 flag on each session (see `app/database.py`) tells the one code path that
-opportunistically refreshes a cache — the ECB rates — to serve what is stored
+opportunistically refreshes a cache — the reference rates — to serve what is stored
 rather than raise.
 
 WHY IT LIVES IN `app/`. It imports six modules from this package and adds no
@@ -67,7 +67,7 @@ Three things decide whether you read the numbers correctly.
 Totals are in the base currency of this database, and every answer names it:
 the financial picture says it under its title, and structured results carry
 `base_currency`. Anything recorded in another currency was converted at the
-ECB reference rate, and the date of the rate used comes back with the figures
+reference rate, and the date of the rate used comes back with the figures
 it produced; a figure a record states itself is given in its own currency.
 
 Wealth is an anchor plus events, not a running balance. Each institution has

@@ -96,7 +96,7 @@ def test_moving_the_date_works_the_arrival_out_again_at_the_new_days_rate(client
     assert (r.json()["to_amount"], r.json()["fx_as_of"]) == (454.55, MOVED)
 
     # Corrected with the statement: the typed figure stands, and no longer
-    # claims the ECB day it replaced.
+    # claims the reference-rate day it replaced.
     r = client.put(
         f"/api/transfers/{tid}",
         json={"date": MOVED, "from_institution_id": wise, "to_institution_id": broker_a,
@@ -106,7 +106,7 @@ def test_moving_the_date_works_the_arrival_out_again_at_the_new_days_rate(client
 
 
 def test_the_figure_on_the_statement_is_kept_as_typed(client, feed):
-    """The bank's rate is not the ECB's, and its spread is real money: the
+    """The bank's rate is not the feed's, and its spread is real money: the
     amount the destination was credited wins, and says it was not derived."""
     wise, broker_a = _accounts(client)
 
@@ -117,7 +117,7 @@ def test_the_figure_on_the_statement_is_kept_as_typed(client, feed):
 
 
 def test_without_a_final_rate_for_the_day_the_arrival_has_to_be_stated(client, monkeypatch):
-    """Today, before the ECB publishes: yesterday's rate is the one in force,
+    """Today, before the feed publishes: yesterday's rate is the one in force,
     and a sum fixed at it would keep yesterday's rate for good. Refused, with
     the one figure that settles it asked for."""
     monkeypatch.setattr(

@@ -366,7 +366,7 @@ _PROMPT_TAIL = (
     "that is, whether it is due already and waits to be bought at the new amount, "
     "and that the carry goes to zero and stays in the account's cash. "
     "`change_base_currency`: the currency every total is shown in; nothing they "
-    "recorded is rewritten, and confirming asks the ECB's feed for the new "
+    "recorded is rewritten, and confirming asks the reference-rate feed for the new "
     "base's rates first.\n\n"
     "What no card does yet, and where they do it themselves: an account, added, "
     "renamed or deleted (Records, Wealth); a situation and its holdings (the "
@@ -608,7 +608,7 @@ class Pending:
 
     Only for a tool that reports as it goes: `run_analysis`, three to six model
     calls and a minute of them, and `change_base_currency`, which asks the
-    ECB's feed for the new base's rates before the setting moves (brief AN), and
+    the reference-rate feed for the new base's rates before the setting moves (brief AN), and
     must not hold SQLite's write lock while it waits. Everything else is written before
     the stream starts, which is what makes "a stream that starts at all is a
     decision already taken" true; a minute of that rule would be a minute of a
