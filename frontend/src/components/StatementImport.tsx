@@ -15,6 +15,7 @@ import {
 } from "../api/imports";
 import type { Institution } from "../api/institutions";
 import { RowsOrEmpty, Row, Section, apiError, inputClass } from "./ui";
+import { HiddenNote, matchesMember, type MemberFilter } from "./MemberPicker";
 import { tOpt, useT } from "../i18n/index.ts";
 
 /* The statement lane's whole surface: pick a file, see what is in it, confirm
@@ -39,9 +40,15 @@ function sourceWord(tr: ReturnType<typeof useT>, source: string): string {
 
 export default function StatementImport({
   institutions,
+  filter,
+  memberName,
   onChanged,
 }: {
   institutions: Institution[];
+  /** The page's member filter (PRD v3 §4.1): changes what is shown here,
+      never what is stored. */
+  filter: MemberFilter;
+  memberName: (id: number | null) => string | null;
   /** Called after a commit or an undo: the page's own totals read differently
       once a statement is in, and this is how it hears about it. */
   onChanged: () => void;
@@ -212,7 +219,7 @@ export default function StatementImport({
             {tr("imports.previewBtn")}
           </button>
         </div>
-        {message && <p className="mt-2 text-sm text-olive-deep">{message}</p>}
+        {message && <p className="mt-2 text-sm text-brand-deep">{message}</p>}
         {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
       </Section>
 
@@ -256,7 +263,7 @@ export default function StatementImport({
                   <td>
                     {c.direction === "in" ? "+" : "−"}
                     {legIndices.has(i) && (
-                      <span className="ml-1 text-xs text-olive">{tr("imports.legMark")}</span>
+                      <span className="ml-1 text-xs text-brand">{tr("imports.legMark")}</span>
                     )}
                   </td>
                   <td className="truncate">{c.counterparty ?? "—"}</td>
@@ -361,23 +368,31 @@ export default function StatementImport({
       </Section>
 
       <Section title={tr("imports.entriesTitle")}>
+        {/* The page's member filter reaches here too: a row's attribution is
+            its own fact, and hiding rows is always said out loud below. */}
         <RowsOrEmpty
           loading={false}
           error={null}
-          empty={entries.length === 0}
+          empty={entries.filter((e) => matchesMember(e.member_id, filter)).length === 0}
           emptyText={tr("imports.noEntries")}
         >
-          {entries.map((e) => (
-            <Row
-              key={e.id}
-              title={`${e.date} · ${e.direction === "in" ? "+" : "−"}${e.amount.toFixed(2)} ${e.currency}`}
-              subtitle={[e.counterparty, categoryWord(e.category)]
-                .filter(Boolean)
-                .join(" · ")}
-              onDelete={() => void removeEntry(e.id)}
-            />
-          ))}
+          {entries
+            .filter((e) => matchesMember(e.member_id, filter))
+            .map((e) => (
+              <Row
+                key={e.id}
+                title={`${e.date} · ${e.direction === "in" ? "+" : "−"}${e.amount.toFixed(2)} ${e.currency}`}
+                subtitle={[e.counterparty, categoryWord(e.category), memberName(e.member_id)]
+                  .filter(Boolean)
+                  .join(" · ")}
+                onDelete={() => void removeEntry(e.id)}
+              />
+            ))}
         </RowsOrEmpty>
+        <HiddenNote
+          hidden={entries.filter((e) => !matchesMember(e.member_id, filter)).length}
+          filter={filter}
+        />
       </Section>
     </div>
   );

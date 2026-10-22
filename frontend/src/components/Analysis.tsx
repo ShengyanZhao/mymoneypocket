@@ -46,7 +46,7 @@ const ROLE_LABEL: Record<string, string> = {
 const CHALLENGE: Record<string, { label: string; tone: string; title: string }> = {
   contested: {
     label: "contested",
-    tone: "text-olive",
+    tone: "text-brand",
     title:
       "The confidant said it was challenging something that mattered, so the analyst was made to answer it",
   },
@@ -68,13 +68,13 @@ function StepBlock({ step }: { step: ChainStep }) {
   return (
     <li className="relative border-l border-rule pl-5">
       {/* the node on the timeline */}
-      <span className="absolute -left-[4.5px] top-2.5 h-2 w-2 rounded-full bg-olive" />
+      <span className="absolute -left-[4.5px] top-2.5 h-2 w-2 rounded-full bg-brand" />
       <button
         onClick={() => setOpen(!open)}
         aria-expanded={open}
         className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 text-left"
       >
-        <span className="text-[0.65rem] font-medium uppercase tracking-[0.14em] text-olive">
+        <span className="text-[0.65rem] font-medium uppercase tracking-[0.14em] text-brand">
           {ROLE_LABEL[step.role] ?? step.role}
         </span>
         <span className="font-display text-lg leading-tight text-ink">{step.title}</span>
@@ -126,11 +126,11 @@ function Header({
 }) {
   return (
     <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-      <button onClick={onClose} className="text-sm text-olive underline-offset-2 hover:underline">
+      <button onClick={onClose} className="text-sm text-brand underline-offset-2 hover:underline">
         ‹ Back
       </button>
       {onList && (
-        <button onClick={onList} className="text-sm text-olive underline-offset-2 hover:underline">
+        <button onClick={onList} className="text-sm text-brand underline-offset-2 hover:underline">
           All analyses
         </button>
       )}
@@ -273,12 +273,12 @@ function OneRun({
         )}
       </Header>
 
-      {error && <p className="text-down">{error}</p>}
+      {error && <p className="text-bad">{error}</p>}
       {!run && !error && <Spinner className="text-ink-soft" />}
 
       {run && verdict && (
         <div className={cardClass + " p-6"}>
-          <p className="mb-3 text-[0.65rem] font-medium uppercase tracking-[0.14em] text-olive">
+          <p className="mb-3 text-[0.65rem] font-medium uppercase tracking-[0.14em] text-brand">
             What this means for you
           </p>
           <div className="max-w-none">

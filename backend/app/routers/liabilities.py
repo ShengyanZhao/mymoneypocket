@@ -8,11 +8,13 @@ finances (404 if that asset does not exist).
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import crud, models, schemas
+from app import amortization, crud, fx, models, schemas
 from app.database import get_db
 from app.routers.deps import get_or_404
 
@@ -141,3 +143,117 @@ def delete_balance(balance_id: int, db: Session = Depends(get_db)) -> None:
     """Delete a liability balance."""
     get_or_404(db, models.LiabilityBalance, balance_id)
     crud.delete_liability_balance(db, balance_id)
+
+
+# --- The loan's plan, and the choice about paying early (PRD v3 §4.4) ----
+
+
+def _parts_of(liability) -> list[dict]:
+    terms = json.loads(liability.terms) if liability.terms else {}
+    return terms.get("parts") or []
+
+
+@router.get("/liabilities/{liability_id}/plan", response_model=schemas.LoanPlanRead)
+def loan_plan(liability_id: int, db: Session = Depends(get_db)) -> dict:
+    """The schedule the loan's own terms describe, beside the balance the
+    reader recorded. `difference` is the gap between them — usually a
+    prepayment, and named rather than left silent."""
+    liability = crud.get_liability(db, liability_id)
+    if liability is None:
+        raise HTTPException(status_code=404, detail="No such debt")
+    parts = _parts_of(liability)
+    if not parts and not liability.installment_plan:
+        raise HTTPException(status_code=422, detail="This debt has no plan on record")
+    plan_remaining = sum(amortization.remaining_after(p) for p in parts)
+    stated = liability.latest_balance
+    return {
+        "liability_id": liability_id,
+        "name": liability.name,
+        "currency": liability.currency,
+        "parts": [
+            {
+                **p,
+                "remaining": amortization.remaining_after(p),
+                "monthly_payment": (
+                    amortization.part_schedule(p)[0].payment
+                    if amortization.part_schedule(p)
+                    else 0.0
+                ),
+            }
+            for p in parts
+        ],
+        "schedule": amortization.merged_schedule(parts),
+        "interest_by_year": amortization.interest_by_year(parts),
+        "monthly_payment": amortization.monthly_payment(parts),
+        "plan_remaining": plan_remaining,
+        "stated_balance": stated,
+        "difference": (round(stated - plan_remaining, 2) if stated is not None else None),
+        "installment": _installment_view(liability),
+        "base_currency": fx.base_currency(db),
+    }
+
+
+def _installment_view(liability) -> dict | None:
+    """The instalment plan with both its rates. The nominal figure is the fee
+    arithmetic every advertisement quotes; the real one is the IRR of the
+    plan's own flows (`amortization`), which is what the money costs."""
+    plan = json.loads(liability.installment_plan) if liability.installment_plan else None
+    if not plan:
+        return None
+    principal = float(plan.get("principal") or 0)
+    count = int(plan.get("count") or 0)
+    per = float(plan.get("per_period") or 0)
+    real = amortization.effective_annual_rate(principal, count, per_payment=per) if principal and count else None
+    total_fee = per * count - principal if principal and count else 0.0
+    years = count / 12 if count else 1.0
+    nominal = (total_fee / principal / years) if principal and years else None
+    return {
+        **plan,
+        "total_fee": round(total_fee, 2),
+        "nominal_rate": round(nominal, 6) if nominal is not None else None,
+        "effective_rate": round(real, 6) if real is not None else None,
+    }
+
+
+@router.post("/liabilities/{liability_id}/prepay", response_model=schemas.PrepayComparison)
+def prepay(
+    liability_id: int, payload: schemas.PrepayRequest, db: Session = Depends(get_db)
+) -> dict:
+    """What paying `amount` early saves, against what it would earn invested.
+    With no mode named, BOTH answers arrive — the decision card compares
+    them side by side. Moves nothing: saving the comparison is a Decision,
+    and executing it is a dated balance the reader writes."""
+    liability = crud.get_liability(db, liability_id)
+    if liability is None:
+        raise HTTPException(status_code=404, detail="No such debt")
+    parts = _parts_of(liability)
+    if not parts:
+        raise HTTPException(status_code=422, detail="This debt has no plan on record")
+    modes = [payload.mode] if payload.mode else ["shorten", "reduce"]
+    options = [
+        amortization.prepay_comparison(
+            parts, payload.amount, m, payload.expected_return, payload.volatility
+        )
+        for m in modes
+    ]
+    return {
+        "liability_id": liability_id,
+        "base_currency": fx.base_currency(db),
+        "options": options,
+    }
+
+
+# --- Decisions: what was weighed and chosen, moving nothing --------------
+
+
+@router.get("/decisions", response_model=list[schemas.DecisionRead])
+def list_decisions(db: Session = Depends(get_db)) -> list:
+    """Every comparison the reader saved, newest first."""
+    return crud.get_decisions(db)
+
+
+@router.post("/decisions", response_model=schemas.DecisionRead, status_code=status.HTTP_201_CREATED)
+def create_decision(payload: schemas.DecisionCreate, db: Session = Depends(get_db)) -> object:
+    """Keep a choice. This writes no balance and moves no money — executing
+    the choice is a dated balance row the reader writes when it happens."""
+    return crud.create_decision(db, payload)

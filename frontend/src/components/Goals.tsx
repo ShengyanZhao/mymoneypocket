@@ -284,7 +284,7 @@ export default function Goals() {
         </div>
       </form>
 
-      {error && <p className="text-down">{error}</p>}
+      {error && <p className="text-bad">{error}</p>}
 
       <RowsOrEmpty loading={false} error={null} empty={items.length === 0} emptyText={tr("goals.empty")}>
         {items.map((g) => (
@@ -310,10 +310,10 @@ function RequiredReturnNote({ rr }: { rr: RequiredReturnResult }) {
   const r = rr.required_annual_return;
   const tone =
     r === null || r > 0.12
-      ? "bg-down-tint text-down"
+      ? "bg-bad-tint text-bad"
       : r > 0.08
         ? "bg-warn-tint text-warn"
-        : "bg-up-tint text-up";
+        : "bg-good-tint text-good";
   const rate =
     r === null
       ? tr("goals.rateUnreachable")

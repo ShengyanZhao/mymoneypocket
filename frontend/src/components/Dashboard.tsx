@@ -22,7 +22,11 @@ import { EmptyState } from "./Emblem";
 import { inForceIntro, notCounted, undatedLine } from "./inForce";
 import { OmissionsNotice } from "./OmissionsNotice";
 import { UnconvertedNotice } from "./UnconvertedNotice";
-import { Explainer, savingsRate, StatCard, apiError, cardClass, locale, money, statLabelClass } from "./ui";
+import { Explainer, savingsRate, StatCard, apiError, cardClass, compact, locale, money, statLabelClass } from "./ui";
+import { MemberAvatar } from "./MemberPicker";
+import { sharedLabel } from "./members";
+import ForecastCard from "./ForecastCard";
+import Review from "./Review";
 import { t, tOpt, useT } from "../i18n/index.ts";
 import type { Money } from "./money";
 
@@ -115,7 +119,7 @@ function ChartCard({
               className={
                 "border-b transition " +
                 (view === v.key
-                  ? "border-olive font-semibold text-ink"
+                  ? "border-brand font-semibold text-ink"
                   : "border-transparent text-ink-soft hover:text-ink")
               }
             >
@@ -193,7 +197,7 @@ function RankedBars({
           </span>
           <div className="h-3 bg-tint">
             <div
-              className="h-3 rounded-r-[4px] bg-olive"
+              className="h-3 rounded-r-[4px] bg-brand"
               style={{ width: `${Math.max((it.value / max) * 100, 1)}%` }}
             />
           </div>
@@ -229,7 +233,9 @@ function Meter({ ratio }: { ratio: number | null }) {
       </div>
     );
   const clamped = Math.max(0, Math.min(ratio, 1));
-  const tone = ratio < 0 ? "bg-down" : ratio < 0.1 ? "bg-warn" : "bg-olive";
+  // Status, not market direction: a healthy savings rate is green whatever
+  // the 涨跌配色 setting does to gains and losses.
+  const tone = ratio < 0 ? "bg-bad" : ratio < 0.1 ? "bg-warn" : "bg-good";
   const label =
     ratio < 0
       ? tr("dashboard.savingsRateDown")
@@ -245,7 +251,7 @@ function Meter({ ratio }: { ratio: number | null }) {
         </span>
         <span className="text-xs text-ink-soft">{label}</span>
       </div>
-      <div className="h-2.5 bg-olive-tint">
+      <div className="h-2.5 bg-brand-tint">
         <div className={"h-2.5 rounded-r-[4px] " + tone} style={{ width: `${clamped * 100}%` }} />
       </div>
     </div>
@@ -261,7 +267,7 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-export default function Dashboard() {
+export default function Dashboard({ onAskAi }: { onAskAi: (seed: string) => void }) {
   const tr = useT();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [allocation, setAllocation] = useState<DashboardAllocation | null>(null);
@@ -296,10 +302,13 @@ export default function Dashboard() {
   }
 
   if (loading) return <p className="text-ink-soft">{tr("common.loading")}</p>;
-  if (error) return <p className="text-down">{error}</p>;
+  if (error) return <p className="text-bad">{error}</p>;
   if (!summary || !allocation) return null;
   // Each figure in the unit of the payload it came in.
   const inSummary = money(summary.base_currency);
+  // The same figures read LARGE: 万/亿 abbreviations in Chinese, plain digits
+  // in English. The full number stays beside each one as its `title`.
+  const inCompact = compact(summary.base_currency);
   const inAllocation = money(allocation.base_currency);
 
   const allocationItems = [
@@ -330,8 +339,11 @@ export default function Dashboard() {
             {tr("dashboard.netWorth")}
           </p>
           <div className="mt-1.5 flex flex-wrap items-baseline gap-x-5 gap-y-1">
-            <span className="font-display text-5xl leading-none text-ink sm:text-6xl">
-              {inSummary.format(summary.net_worth)}
+            <span
+              className="font-display text-5xl leading-none text-ink sm:text-6xl"
+              title={inSummary.format(summary.net_worth)}
+            >
+              {inCompact.format(summary.net_worth)}
             </span>
             {delta != null && delta !== 0 && (
               <span className={"text-sm " + (delta > 0 ? "text-up" : "text-down")}>
@@ -355,7 +367,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-4">
           <StatCard
             label={tr("dashboard.investments")}
-            value={inSummary.format(summary.investments_total)}
+            value={inCompact.format(summary.investments_total)}
             // Silence here would mean "all of this is a live figure", which is
             // only sometimes true: a position nothing can price is carried over
             // from its last photograph and should say so.
@@ -367,18 +379,45 @@ export default function Dashboard() {
                 : undefined
             }
           />
-          <StatCard label={tr("dashboard.cash")} value={inSummary.format(summary.cash_total)} />
+          <StatCard label={tr("dashboard.cash")} value={inCompact.format(summary.cash_total)} />
           <StatCard
             label={tr("dashboard.realAssets")}
-            value={inSummary.format(summary.real_total)}
+            value={inCompact.format(summary.real_total)}
           />
           <StatCard
             label={tr("dashboard.debts")}
-            value={inSummary.format(summary.liabilities_total)}
-            valueClass={summary.liabilities_total > 0 ? "text-down" : "text-ink"}
+            value={inCompact.format(summary.liabilities_total)}
+            valueClass={summary.liabilities_total > 0 ? "text-bad" : "text-ink"}
           />
         </div>
       </section>
+
+      {/* 家庭净资产构成 (PRD v3 §4.1): the same net worth, split by whose it
+          is. The slices plus the shared one add back to the hero figure
+          exactly — one computation, two readings — so this card cannot
+          disagree with the number above it. Hidden while the household is
+          unnamed: a breakdown of one is the hero again. */}
+      {summary.by_member.some((s) => s.member_id != null) && (
+        <section className="space-y-3">
+          <p className={statLabelClass}>{tr("members.worthTitle")}</p>
+          <div className="flex flex-wrap gap-x-8 gap-y-4">
+            {summary.by_member.map((s) => (
+              <div key={s.member_id ?? "shared"} className="flex items-center gap-2.5">
+                <MemberAvatar member={{ id: s.member_id, name: s.name }} size={30} />
+                <div>
+                  <div className="text-xs text-ink-soft">
+                    {s.member_id == null ? sharedLabel() : (s.name ?? "")}
+                  </div>
+                  <div className="tnum text-lg font-semibold text-ink">
+                    {inCompact.format(s.net_worth)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="max-w-[68ch] text-xs text-ink-faint">{tr("members.worthNote")}</p>
+        </section>
+      )}
 
       {/* Right under the figure it qualifies: net worth is smaller than it was
           and no line says why. The Dashboard is where that difference has to be
@@ -412,7 +451,7 @@ export default function Dashboard() {
           table={
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-rule text-[0.65rem] uppercase tracking-[0.12em] text-olive">
+                <tr className="border-b border-rule text-[0.65rem] uppercase tracking-[0.12em] text-brand">
                   <th className="py-2 pr-4 font-semibold">{tr("dashboard.date")}</th>
                   <th className="py-2 pr-4 text-right font-semibold">{tr("dashboard.netWorth")}</th>
                   <th className="py-2 pr-4 text-right font-semibold">{tr("dashboard.financial")}</th>
@@ -460,16 +499,16 @@ export default function Dashboard() {
               <Area
                 type="monotone"
                 dataKey="net_worth"
-                stroke="var(--color-olive)"
+                stroke="var(--color-brand)"
                 strokeWidth={2}
                 strokeLinejoin="round"
                 strokeLinecap="round"
-                fill="var(--color-olive)"
+                fill="var(--color-brand)"
                 fillOpacity={0.1}
                 dot={false}
                 activeDot={{
                   r: 4,
-                  fill: "var(--color-olive)",
+                  fill: "var(--color-brand)",
                   stroke: "var(--color-surface)",
                   strokeWidth: 2,
                 }}
@@ -479,7 +518,7 @@ export default function Dashboard() {
                 x={last.date}
                 y={last.net_worth}
                 r={5}
-                fill="var(--color-olive)"
+                fill="var(--color-brand)"
                 stroke="var(--color-surface)"
                 strokeWidth={2}
               />
@@ -499,7 +538,7 @@ export default function Dashboard() {
             table={
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-rule text-[0.65rem] uppercase tracking-[0.12em] text-olive">
+                  <tr className="border-b border-rule text-[0.65rem] uppercase tracking-[0.12em] text-brand">
                     <th className="py-2 pr-4 font-semibold">{tr("dashboard.class")}</th>
                     <th className="py-2 pr-4 text-right font-semibold">{tr("dashboard.value")}</th>
                     <th className="py-2 text-right font-semibold">{tr("dashboard.share")}</th>
@@ -529,18 +568,18 @@ export default function Dashboard() {
               <div className="grid grid-cols-3 gap-x-5">
                 <StatCard
                   label={tr("dashboard.income")}
-                  value={money(cash.base_currency).format(cash.monthly_income)}
-                  valueClass="text-up"
+                  value={compact(cash.base_currency).format(cash.monthly_income)}
+                  valueClass="text-good"
                 />
                 <StatCard
                   label={tr("dashboard.expenses")}
-                  value={money(cash.base_currency).format(cash.monthly_expenses)}
-                  valueClass="text-down"
+                  value={compact(cash.base_currency).format(cash.monthly_expenses)}
+                  valueClass="text-bad"
                 />
                 <StatCard
                   label={tr("dashboard.net")}
-                  value={money(cash.base_currency).format(cash.monthly_net)}
-                  valueClass={cash.monthly_net >= 0 ? "text-ink" : "text-down"}
+                  value={compact(cash.base_currency).format(cash.monthly_net)}
+                  valueClass={cash.monthly_net >= 0 ? "text-ink" : "text-bad"}
                 />
               </div>
               <Meter ratio={cash.savings_rate} />
@@ -558,6 +597,16 @@ export default function Dashboard() {
             </div>
           </Panel>
         )}
+
+        {/* What the days ahead hold (PRD v3 §4.3): the forecast and its
+            gaps, with the bills coming due — before the review of the month
+            that has passed, because the thin day is the one to act on. */}
+        <ForecastCard />
+
+        {/* The month's review, at the foot of the page that is read most
+            (PRD v3 §4.2): what a month did, what moved, and what to take
+            into the next one — one press from the chat for the rest. */}
+        <Review onAskAi={onAskAi} />
       </div>
     </div>
   );

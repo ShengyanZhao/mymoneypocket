@@ -79,7 +79,7 @@ function Item({
           <button
             onClick={onBuy}
             title={tr("watch.recordBuyTitle", { what })}
-            className="rounded-sm border border-rule px-2 py-1 text-xs text-ink-soft transition hover:border-olive hover:text-olive"
+            className="rounded-sm border border-rule px-2 py-1 text-xs text-ink-soft transition hover:border-brand hover:text-brand"
           >
             {tr("watch.recordBuy")}
           </button>
@@ -87,7 +87,7 @@ function Item({
             onClick={onDrop}
             aria-label={tr("watch.drop")}
             title={tr("watch.drop")}
-            className="px-2 text-ink-faint transition hover:text-down"
+            className="px-2 text-ink-faint transition hover:text-bad"
           >
             ✕
           </button>

@@ -94,7 +94,7 @@ export default function Records({
             className={
               "-mb-2 border-b-2 pb-2 text-sm transition " +
               (p.key === page
-                ? "border-olive font-semibold text-ink"
+                ? "border-brand font-semibold text-ink"
                 : "border-transparent text-ink-soft hover:text-ink")
             }
           >

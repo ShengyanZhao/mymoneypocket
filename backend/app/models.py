@@ -54,6 +54,29 @@ class Setting(Base):
     value: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class Member(Base):
+    """A person this household ledger is about: whose money a row is.
+
+    A MEMBERSHIP dimension, not an account and not a login: there is one
+    database and one reader (the north star in how-aurelio-reasons.md). Members
+    exist so a couple can each record their own spending and still read one
+    household picture. Every row that carries money may name one; `None` is
+    共同 — shared, the household's own — and is a first-class answer rather
+    than an omission.
+
+    Deleting a member stamps its rows back to shared (FK ondelete="SET NULL"):
+    the ledger loses an attribution, never a record. `role` is display-only
+    vocabulary (self | spouse | child | parent | other); the avatar letter and
+    colour are derived from the name in the UI rather than stored."""
+
+    __tablename__ = "members"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, default=_utcnow_iso, nullable=False)
+
+
 class Institution(Base):
     """Financial institution: bank, broker, insurance, pension fund, etc."""
 
@@ -64,6 +87,12 @@ class Institution(Base):
     # bank | broker | insurance | pension_fund | crypto_exchange | other
     type: Mapped[str | None] = mapped_column(String, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Whose account this is; None = 共同 (shared). The batch-assign tool stamps
+    # this and the account's rows together (see `crud.assign_institution`).
+    member_id: Mapped[int | None] = mapped_column(
+        ForeignKey("members.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at: Mapped[str] = mapped_column(String, default=_utcnow_iso, nullable=False)
 
     snapshots: Mapped[list["Snapshot"]] = relationship(
@@ -222,6 +251,10 @@ class RealAsset(Base):
     acquisition_date: Mapped[str | None] = mapped_column(String, nullable=True)  # YYYY-MM-DD
     acquisition_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    member_id: Mapped[int | None] = mapped_column(
+        ForeignKey("members.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at: Mapped[str] = mapped_column(String, default=_utcnow_iso, nullable=False)
 
     valuations: Mapped[list["RealAssetValuation"]] = relationship(
@@ -274,6 +307,23 @@ class Liability(Base):
         index=True,
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    member_id: Mapped[int | None] = mapped_column(
+        ForeignKey("members.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # The loan's own plan (PRD v3 §4.4, 负债 2.0), JSON:
+    #   {"parts": [{"name", "principal", "rate", "method", "term_months",
+    #               "start_date", "paid_periods"}],
+    #    "payment_institution_id": int?, "lpr": float?, "lpr_history": []}
+    # Empty means the debt is tracked by its dated balances alone, as before.
+    # The plan is a PROJECTION: the reader's balance rows stay the anchor and
+    # the page names the difference between them (`amortization`).
+    terms: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # An instalment plan (花呗/白条/信用卡分期), JSON: {"count", "per_period",
+    # "principal", "fee_rate"}. The fee is arithmetic on the original sum;
+    # what the money costs is the IRR of these flows
+    # (`amortization.effective_annual_rate`).
+    installment_plan: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[str] = mapped_column(String, default=_utcnow_iso, nullable=False)
 
     balances: Mapped[list["LiabilityBalance"]] = relationship(
@@ -362,6 +412,13 @@ class CashFlowItemMixin:
     notes: Mapped[str | None] = mapped_column(Text, nullable=True, sort_order=10)
     created_at: Mapped[str] = mapped_column(
         String, default=_utcnow_iso, nullable=False, sort_order=11
+    )
+    # Whose flow this is; None = 共同. The batch-assign tool stamps it from the
+    # account's member (see `crud.assign_institution`).
+    member_id: Mapped[int | None] = mapped_column(
+        ForeignKey("members.id", ondelete="SET NULL"),
+        nullable=True,
+        sort_order=12,
     )
 
 
@@ -455,6 +512,131 @@ class Transfer(Base):
     to_currency: Mapped[str] = mapped_column(String, nullable=False)
     fx_as_of: Mapped[str | None] = mapped_column(String, nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Whose money moved; None = 共同. A transfer between one's own accounts is
+    # still one's own, which is the case this exists for.
+    member_id: Mapped[int | None] = mapped_column(
+        ForeignKey("members.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[str] = mapped_column(String, default=_utcnow_iso, nullable=False)
+
+
+class Budget(Base):
+    """What a month's spending may reach (PRD v3 §4.2, 预算与复盘).
+
+    One row per category per month it starts applying from: `year_month` is
+    the month it is for, and with `repeat` it is the month it starts
+    applying FROM, on every month after it, until another row for the same
+    category supersedes it. That makes "每月固定" and "仅本月" one column
+    (`repeat`) and an adjustment simply a new row from the month it applies.
+
+    `category` is a taxonomy code, or None for the household's overall
+    ceiling — the two levels of the same sentence. Amounts are in the BASE
+    currency: a budget is a limit on what the totals already measure.
+
+    A budget never blocks a row — spending is a fact; the budget only says
+    how the fact sits against a plan (超预算只提示不禁止)."""
+
+    __tablename__ = "budgets"
+    __table_args__ = (
+        UniqueConstraint("year_month", "category", name="uq_budget_month_category"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    year_month: Mapped[str] = mapped_column(String, nullable=False, index=True)  # YYYY-MM
+    category: Mapped[str | None] = mapped_column(String, nullable=True)  # None = 总预算
+    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    repeat: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Unused budget carried into the next month. Default off: most budgets
+    # are habits rather than envelopes, and a silent surplus invites
+    # catching up on it.
+    rollover: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[str] = mapped_column(String, default=_utcnow_iso, nullable=False)
+
+
+class Decision(Base):
+    """A choice the reader worked out and wants kept (PRD v3 §4.4).
+
+    The prepay calculation is a comparison, not a transaction: saving it
+    changes no balance and moves no money. What it keeps is the question and
+    the two answers beside each other, so half a year later the household
+    can see what it was weighing when it chose. Executing the choice is the
+    dated balance row that follows — this never writes one."""
+
+    __tablename__ = "decisions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False)  # prepay_mortgage | ...
+    payload: Mapped[str] = mapped_column(Text, nullable=False)  # JSON: the comparison as computed
+    created_at: Mapped[str] = mapped_column(String, default=_utcnow_iso, nullable=False)
+
+
+class BillSchedule(Base):
+    """Money that will move on a day the flow vocabulary cannot name
+    (PRD v3 §4.3, 账单日历).
+
+    A recurring flow says what REPEATS and picks the same day of its start
+    month; this says what the calendar knows and the frequency cannot: the
+    credit card's due date, the tuition charged twice a year in the school's
+    own months, the salary paid on the LAST WORKDAY of the month rather than
+    on any fixed day.
+
+    A schedule either names an amount (and the forecast counts it) or leaves
+    it empty (a card's bill varies — the forecast shows the date, says
+    金额未定, and counts nothing rather than a guess). When a fixed schedule
+    and a flow describe the same payment, the schedule speaks for it — the
+    same coverage rule the cash register keeps between entries and flows
+    (`analytics._covered_by_entries`), so one payment is never counted twice
+    and never dated twice.
+
+    `months` is the month numbers the bill falls in (JSON list, [2, 9] for
+    tuition): empty or null is every month. `due_day` (1–28) and
+    `due_last_workday` say WHICH day — one of the two, never both."""
+
+    __tablename__ = "bill_schedules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    # credit_card | installment | insurance | tuition | rent | mortgage | salary | custom
+    kind: Mapped[str | None] = mapped_column(String, nullable=True)
+    direction: Mapped[str] = mapped_column(String, default="out", nullable=False)  # in | out
+    # None = it varies (a card's bill): the date is known, the sum is not.
+    amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    currency: Mapped[str | None] = mapped_column(String, nullable=True)  # None = base
+    institution_id: Mapped[int | None] = mapped_column(
+        ForeignKey("institutions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    member_id: Mapped[int | None] = mapped_column(
+        ForeignKey("members.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    due_day: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 1–28
+    due_last_workday: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # JSON list of month numbers (1–12); empty = every month.
+    months: Mapped[str | None] = mapped_column(Text, nullable=True)
+    remind_days: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    start_date: Mapped[str | None] = mapped_column(String, nullable=True)  # YYYY-MM-DD
+    end_date: Mapped[str | None] = mapped_column(String, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, default=_utcnow_iso, nullable=False)
+
+
+class MonthlyReview(Base):
+    """The reader's decisions about one month's review suggestions.
+
+    The review itself is COMPUTED from the rows every time it is read
+    (`budgeting.month_review`), so its numbers cannot drift from the ledger
+    it describes. What is stored here is the one part the rows cannot know:
+    which suggestions the reader took or dismissed, so a dismissed one stops
+    coming back."""
+
+    __tablename__ = "monthly_reviews"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    year_month: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    # JSON: {suggestion key: "accepted" | "ignored"}
+    resolved: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     created_at: Mapped[str] = mapped_column(String, default=_utcnow_iso, nullable=False)
 
 
@@ -492,6 +674,12 @@ class Goal(Base):
     current_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
     monthly_contribution: Mapped[float | None] = mapped_column(Float, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Whose goal this is; None = the household's (a down payment is usually
+    # shared, a child's education fund usually is not).
+    member_id: Mapped[int | None] = mapped_column(
+        ForeignKey("members.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at: Mapped[str] = mapped_column(String, default=_utcnow_iso, nullable=False)
 
 
@@ -589,6 +777,12 @@ class Transaction(Base):
     plan_occurrence: Mapped[str | None] = mapped_column(String, nullable=True)  # YYYY-MM-DD
     estimated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Whose trade this was; None = 共同. A PAC's buys inherit the plan's
+    # attribution at creation (see `pac.py`); nothing rewrites rows later.
+    member_id: Mapped[int | None] = mapped_column(
+        ForeignKey("members.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at: Mapped[str] = mapped_column(String, default=_utcnow_iso, nullable=False)
 
     @property
@@ -1131,6 +1325,14 @@ class CashEntry(Base):
     is_transfer_leg: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     linked_transfer_id: Mapped[int | None] = mapped_column(
         ForeignKey("transfers.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # Whose movement this was; None = 共同. Indexed because the entries list
+    # filters by it; the statement lane leaves it null until the reader says
+    # whose card it was (`crud.assign_institution` stamps a whole account).
+    member_id: Mapped[int | None] = mapped_column(
+        ForeignKey("members.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )

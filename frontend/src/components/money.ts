@@ -15,7 +15,7 @@
    No React and no DOM, on purpose: this is plain arithmetic about strings, and
    it can be run by `node` alone. */
 
-import { getFormatLocale, subscribe } from "../i18n/t.ts";
+import { getFormatLocale, getLocale, subscribe } from "../i18n/t.ts";
 
 /* The reader's own conventions, resolved once and imported everywhere.
 
@@ -105,4 +105,28 @@ function labelled(code: string, precision: Precision): Money {
     precision === "whole" ? { maximumFractionDigits: 0 } : { maximumFractionDigits: 2 },
   );
   return { format: (amount: number) => `${plain.format(amount)} ${code}` };
+}
+
+/* The few figures printed LARGE — the net worth hero, the stat band — follow
+   a Chinese reading habit the row figures do not: from 1万 up they are read
+   by ten thousands ("¥312.46 万"), from 1亿 up by hundred millions
+   ("¥3.12 亿"). A Chinese reader parses 312.46 万 faster than 3,124,560,
+   and that is the whole argument for the difference.
+
+   It stands only when the app is read in Chinese. Not from the browser's
+   locale: a reader who chose the English UI gets English figures, because
+   the choice of language is the choice of conventions. Below 1万, and in
+   English always, this is just `money(code)` — the full digits, which a
+   hover/`title` can also always show. */
+export function compact(currency: string): Money {
+  const code = currency.trim();
+  return {
+    format(amount: number): string {
+      if (getLocale() !== "zh") return money(code).format(amount);
+      const abs = Math.abs(amount);
+      if (abs >= 100_000_000) return `${money(code, "cents").format(amount / 100_000_000)} 亿`;
+      if (abs >= 10_000) return `${money(code, "cents").format(amount / 10_000)} 万`;
+      return money(code).format(amount);
+    },
+  };
 }

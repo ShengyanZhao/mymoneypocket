@@ -18,6 +18,7 @@ import Profile from "./components/Profile";
 import Goals from "./components/Goals";
 import Analysis from "./components/Analysis";
 import ChatPanel from "./components/ChatPanel";
+import QuickEntry from "./components/QuickEntry";
 import { Mark } from "./components/Emblem";
 import { apiError, CURRENCY_LIST, inputClass } from "./components/ui";
 import { dividendsNote } from "./components/catchUpNote";
@@ -73,7 +74,7 @@ function TabButton({
       className={
         "border-b-2 px-1.5 py-1 text-sm transition " +
         (active
-          ? "border-olive font-semibold text-ink"
+          ? "border-brand font-semibold text-ink"
           : "border-transparent text-ink-soft hover:text-ink")
       }
     >
@@ -108,7 +109,7 @@ function LangToggle() {
           className={
             "rounded-sm px-2 py-1 transition " +
             (tr.locale === l
-              ? "bg-olive text-white"
+              ? "bg-brand text-white"
               : "text-ink-soft hover:text-ink")
           }
         >
@@ -168,7 +169,7 @@ function CurrencyPicker({
   }
 
   return (
-    <div className="flex items-center gap-2 self-center text-xs">
+    <div className="hidden items-center gap-2 self-center text-xs md:flex">
       <label htmlFor="header-currency" className="text-ink-soft">
         {tr("currency.label")}
       </label>
@@ -186,7 +187,7 @@ function CurrencyPicker({
         ))}
       </select>
       {error && (
-        <span role="alert" className="max-w-64 text-down">
+        <span role="alert" className="max-w-64 text-bad">
           {error}
         </span>
       )}
@@ -200,6 +201,10 @@ function CurrencyPicker({
 // ground, the speech bubble, and its name spelled out down its length; the
 // panel slides out from behind it, so the control sits where the thing it
 // controls comes from.
+//
+// On a phone there is no room for a strip, so the strip goes and a floating
+// round button takes over its one job (`ChatFab` below): the panel still
+// slides in, from the screen's edge rather than from behind a rail.
 function ChatRail({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const tr = useT();
   return (
@@ -209,10 +214,10 @@ function ChatRail({ open, onToggle }: { open: boolean; onToggle: () => void }) {
       aria-pressed={open}
       title={open ? tr("chat.rail.close") : tr("chat.rail.askTitle")}
       className={
-        "relative sticky top-0 z-10 flex h-screen w-14 shrink-0 items-center justify-center border-r transition " +
+        "relative sticky top-0 z-10 hidden h-screen w-14 shrink-0 items-center justify-center border-r transition md:flex " +
         (open
-          ? "border-olive-deep bg-olive text-white hover:bg-olive-deep"
-          : "border-rule bg-olive-tint text-olive-deep hover:bg-olive hover:text-white")
+          ? "border-brand-deep bg-brand text-white hover:bg-brand-deep"
+          : "border-rule bg-brand-tint text-brand-deep hover:bg-brand hover:text-white")
       }
     >
       <span className="absolute top-5" aria-hidden="true">
@@ -256,6 +261,106 @@ function ChatRail({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   );
 }
 
+/* The phone's way around: a bar pinned to the bottom, thumb-reachable, with
+   the four tabs and one raised button in the middle for the thing a phone is
+   actually used for — recording money in three seconds.
+
+   The middle button is not a tab and does not pretend to be: it opens the
+   quick entry sheet (`QuickEntry`) and leaves the tab you were on exactly
+   where it was. The order puts the two READ views outside and the two
+   frequent ones inside (总览 · 记账 · ＋ · 持仓 · 档案), so the raised button
+   sits under the thumb whatever hand holds the phone. */
+function MobileBar({
+  tab,
+  onTab,
+  onQuick,
+}: {
+  tab: Tab;
+  onTab: (t: Tab) => void;
+  onQuick: () => void;
+}) {
+  const tr = useT();
+  const items: { key: Tab; label: string; path: string }[] = [
+    { key: "dashboard", label: tr("nav.tabs.dashboard"), path: "M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z" },
+    { key: "records", label: tr("nav.tabs.records"), path: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" },
+    { key: "portfolio", label: tr("nav.tabs.portfolio"), path: "M3 17l6-6 4 4 8-8M21 7v5h-5" },
+    { key: "profile", label: tr("nav.tabs.profile"), path: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4 3.6-6 8-6s8 2 8 6" },
+  ];
+  const item = (e: { key: Tab; label: string; path: string }) => (
+    <button
+      key={e.key}
+      onClick={() => onTab(e.key)}
+      aria-current={tab === e.key ? "page" : undefined}
+      className={
+        "flex flex-1 flex-col items-center gap-0.5 py-2 text-[0.65rem] transition " +
+        (tab === e.key ? "text-brand" : "text-ink-faint hover:text-ink")
+      }
+    >
+      <svg viewBox="0 0 24 24" width="22" height="22" focusable="false" aria-hidden="true">
+        <path
+          d={e.path}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      {e.label}
+    </button>
+  );
+  return (
+    <nav
+      aria-label={tr("nav.bar")}
+      className="fixed inset-x-0 bottom-0 z-20 border-t border-rule bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
+    >
+      <div className="flex items-end">
+        {item(items[0])}
+        {item(items[1])}
+        <div className="flex flex-1 flex-col items-center">
+          <button
+            onClick={onQuick}
+            aria-label={tr("quick.openTitle")}
+            className="-mt-5 flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white shadow-[0_4px_12px_rgba(43,95,217,0.35)] transition hover:bg-brand-deep"
+          >
+            <svg viewBox="0 0 24 24" width="26" height="26" focusable="false" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+            </svg>
+          </button>
+          <span className="mt-0.5 text-[0.65rem] text-brand">{tr("quick.fab")}</span>
+        </div>
+        {item(items[2])}
+        {item(items[3])}
+      </div>
+    </nav>
+  );
+}
+
+// The chat's phone control: the rail's one job, as a button that floats above
+// the tab bar. It disappears while the panel is open — the panel is full-screen
+// there and carries its own close.
+function ChatFab({ onOpen }: { onOpen: () => void }) {
+  const tr = useT();
+  return (
+    <button
+      onClick={onOpen}
+      aria-label={tr("chat.rail.open")}
+      title={tr("chat.rail.askTitle")}
+      className="fixed bottom-24 right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-white shadow-[0_4px_12px_rgba(43,95,217,0.35)] transition hover:bg-brand-deep md:hidden"
+    >
+      <svg viewBox="0 0 24 24" width="24" height="24" focusable="false" aria-hidden="true">
+        <path
+          d="M4 5.5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9.5L6 20.5v-4H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
+  );
+}
+
 // Banner shown when the ledger catch-up created (or failed to create) entries.
 function PacBanner({
   result,
@@ -278,10 +383,10 @@ function PacBanner({
     divs > 0 ? tr("pac.dividends", { count: divs }) : null,
   ].filter((p): p is string => p !== null);
   return (
-    <div className="border-b border-olive-tint bg-olive-tint">
+    <div className="border-b border-brand-tint bg-brand-tint">
       <div
         className={
-          "mx-auto flex flex-wrap items-center gap-x-3 gap-y-1 px-6 py-2.5 text-sm text-olive-deep " +
+          "mx-auto flex flex-wrap items-center gap-x-3 gap-y-1 px-6 py-2.5 text-sm text-brand-deep " +
           measure
         }
       >
@@ -303,7 +408,7 @@ function PacBanner({
           </span>
         )}
         {result.skipped.length > 0 && (
-          <span className="text-olive-deep">
+          <span className="text-brand-deep">
             {tr("pac.skipped", {
               count: result.skipped.length,
               reason: result.skipped[0].reason,
@@ -314,7 +419,7 @@ function PacBanner({
         <button
           onClick={onDismiss}
           aria-label={tr("common.dismiss")}
-          className="ml-auto px-2 text-olive hover:text-olive-deep"
+          className="ml-auto px-2 text-brand hover:text-brand-deep"
         >
           ✕
         </button>
@@ -336,13 +441,14 @@ export default function App() {
      document id, so one element serves inputs anywhere in the tree, and a page
      with four currency boxes does not ask four times. */
   const [currency, setCurrency] = useState<BaseCurrencySetting | null>(null);
-  /* Bumped when the base currency changes, to draw every figure below again.
-     Each page reads the base once on mount, so the open page would go on
-     showing the old unit until it was left and came back — and "until you
-     switch tabs" is not an answer to a control in the header. One key on the
-     page column remounts whichever is showing, which is exactly the state
-     these components are written to load themselves into. */
-  const [baseVersion, setBaseVersion] = useState(0);
+  /* Bumped when the figures below must be read again: the base currency
+     changed, or the quick entry just wrote a movement. Each page reads its
+     data once on mount, so the open page would go on showing the old numbers
+     until it was left and came back — and "until you switch tabs" is not an
+     answer to a control in the header. One key on the page column remounts
+     whichever is showing, which is exactly the state these components are
+     written to load themselves into. */
+  const [pageVersion, setPageVersion] = useState(0);
   // The chat panel: state ABOVE the tabs, because a conversation that forgot
   // itself when you went to look at the table it was talking about would be a
   // tab in disguise. It stays as you left it when you navigate — open follows
@@ -354,6 +460,13 @@ export default function App() {
   // "this" points at, and it is sent per question because you move between
   // questions.
   const [chatOpen, setChatOpen] = useState(false);
+  // The quick entry sheet, opened by the phone's centre button and by nothing
+  // else. Its saves write through the same route as any hand-typed movement,
+  // and the page below is remounted to show them.
+  const [quickOpen, setQuickOpen] = useState(false);
+  // What the chat should start with: a review hands it the month's sentence,
+  // and the panel keeps it in its draft box for the reader to finish.
+  const [chatSeed, setChatSeed] = useState<string | null>(null);
   // Which analysis run is open in the main column, "list" for the record of
   // all of them, or null for the tab. Not a tab of its own, because you do not
   // GO to an analysis: a card in the chat sends you to the one it produced, and
@@ -496,6 +609,8 @@ export default function App() {
         page={page}
         onOpenRun={setReading}
         onOpenAnalyses={() => setReading("list")}
+        onClose={() => setChatOpen(false)}
+        seed={chatSeed}
       />
       <div className="min-w-0 flex-1">
         {pacResult && (
@@ -521,7 +636,7 @@ export default function App() {
                 Aurelio
               </span>
             </span>
-            <nav className="flex flex-wrap gap-x-4 gap-y-1">
+            <nav className="hidden flex-wrap gap-x-4 gap-y-1 md:flex">
               {TABS.map((entry) => (
                 <TabButton
                   key={entry.key}
@@ -541,13 +656,32 @@ export default function App() {
               available={currency?.available ?? []}
               onSaved={(setting) => {
                 setCurrency(setting);
-                setBaseVersion((n) => n + 1);
+                setPageVersion((n) => n + 1);
               }}
             />
           </div>
         </header>
 
-        <main key={baseVersion} className={"px-6 py-8 " + measure}>
+        {/* The tab bar and the entry button live outside the measure: they are
+            the phone's frame, not page content, and the bottom padding keeps
+            the last row of whatever page this is from hiding under them. */}
+        <MobileBar
+          tab={tab}
+          onTab={(t) => {
+            setReading(null);
+            setTab(t);
+          }}
+          onQuick={() => setQuickOpen(true)}
+        />
+        {!chatOpen && <ChatFab onOpen={() => setChatOpen(true)} />}
+        {quickOpen && (
+          <QuickEntry
+            onClose={() => setQuickOpen(false)}
+            onSaved={() => setPageVersion((n) => n + 1)}
+          />
+        )}
+
+        <main key={pageVersion} className={"px-4 pt-6 pb-28 md:px-6 md:pt-8 md:pb-8 " + measure}>
           {reading !== null ? (
             <Analysis
               runId={reading === "list" ? null : reading}
@@ -556,7 +690,14 @@ export default function App() {
             />
           ) : (
             <>
-              {tab === "dashboard" && <Dashboard />}
+              {tab === "dashboard" && (
+                <Dashboard
+                  onAskAi={(seed) => {
+                    setChatSeed(seed);
+                    setChatOpen(true);
+                  }}
+                />
+              )}
               {tab === "portfolio" && (
                 <Portfolio
                   focus={focus === "ledger" ? "ledger" : null}

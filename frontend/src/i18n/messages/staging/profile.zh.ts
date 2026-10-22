@@ -32,6 +32,14 @@ export const profileZh: Record<keyof typeof profileEn, string> = {
     "保存会把所有合计从 {current} 切换到 {picked}。会先获取对 {picked} 的汇率；如果行情源无法访问，什么都不会改变。",
   "profile.baseOnlyOne": "行情源还没有响应，所以目前只有 {current} 可选。",
 
+  // --- 涨跌配色 -------------------------------------------------------------
+  "profile.gainsTitle": "涨跌配色",
+  "profile.gainsHelp":
+    "只改变盈亏的颜色：持仓的盈亏列、净资产的涨跌。状态色不随之改变——拒绝永远是红色，成功永远是绿色。",
+  "profile.gainsCn": "红涨绿跌",
+  "profile.gainsWest": "绿涨红跌",
+  "profile.gainsNote": "点击立即生效，无需保存。",
+
   // --- 税 -------------------------------------------------------------------
   "profile.taxTitle": "税",
   "profile.taxHelp":

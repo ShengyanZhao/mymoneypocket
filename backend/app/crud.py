@@ -20,7 +20,7 @@ from collections.abc import Callable, Collection
 from typing import TYPE_CHECKING, TypeVar
 
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select, union, update
+from sqlalchemy import delete, func, or_, select, union, update
 from sqlalchemy.orm import Session, selectinload
 
 from app import dated, fx, models, schemas
@@ -555,9 +555,22 @@ def get_real_asset_valuation(
 # --- Liabilities (debts) ----------------------------------------------------
 
 
+def _json_fields(db: Session, row: dict, sent: Collection[str]) -> dict:
+    """`terms` and `installment_plan` are JSON TEXT in the store: a list of a
+    loan's parts is not a column value, and the allow-list in `_columns`
+    knows nothing of this pair. Serialized here so the write path speaks the
+    store's language and the read path (a validator on `LiabilityRead`)
+    speaks the API's."""
+    row = dict(row)
+    for key in ("terms", "installment_plan"):
+        if key in row and isinstance(row[key], (dict, list)):
+            row[key] = json.dumps(row[key], ensure_ascii=False)
+    return row
+
+
 def create_liability(db: Session, data: schemas.LiabilityCreate) -> models.Liability:
     """Create and persist a liability (mortgage, loan, ...)."""
-    return _create(db, models.Liability(**_columns(data)))
+    return _create(db, models.Liability(**_json_fields(db, _columns(data), data.model_fields_set)))
 
 
 def get_liabilities(db: Session) -> list[models.Liability]:
@@ -581,7 +594,7 @@ def get_liability(db: Session, liability_id: int) -> models.Liability | None:
 def update_liability(
     db: Session, liability_id: int, data: schemas.LiabilityCreate
 ) -> models.Liability | None:
-    return _update(db, models.Liability, liability_id, data)
+    return _update(db, models.Liability, liability_id, data, build=_json_fields)
 
 
 def create_liability_balance(
@@ -2034,3 +2047,181 @@ def delete_import_batch(db: Session, batch_id: int) -> bool:
     db.delete(batch)  # entries follow by cascade
     commit(db)
     return True
+
+# --- Bill schedules (PRD v3 §4.3, 账单日历) ------------------------------
+
+
+def _bill_columns(db: Session, row: dict, sent: Collection[str]) -> dict:
+    """`months` is stored as JSON text: the bill's own month numbers, or
+    nothing for every month. Worked out here because a list is not a column
+    value and the allow-list in `_columns` knows nothing of this one."""
+    row = dict(row)
+    if "months" in row:
+        row["months"] = json.dumps(row["months"]) if row["months"] else None
+    return row
+
+
+def get_bill_schedules(db: Session) -> list[models.BillSchedule]:
+    return list(db.scalars(select(models.BillSchedule).order_by(models.BillSchedule.id)))
+
+
+def get_bill_schedule(db: Session, bill_id: int) -> models.BillSchedule | None:
+    return db.get(models.BillSchedule, bill_id)
+
+
+def create_bill_schedule(db: Session, data: schemas.BillScheduleCreate) -> models.BillSchedule:
+    return _create(db, models.BillSchedule(**_bill_columns(db, _columns(data), data.model_fields_set)))
+
+
+def update_bill_schedule(
+    db: Session, bill_id: int, data: schemas.BillScheduleUpdate
+) -> models.BillSchedule | None:
+    return _update(db, models.BillSchedule, bill_id, data, build=_bill_columns)
+
+
+def delete_bill_schedule(db: Session, bill_id: int) -> bool:
+    return _delete(db, db.get(models.BillSchedule, bill_id))
+
+
+# --- Household members (PRD v3 §4.1, 家庭账本) ---------------------------
+
+
+def get_members(db: Session) -> list[models.Member]:
+    """Every member of the household, oldest first: the order they were added
+    is the order the picker offers and the breakdown prints."""
+    return list(db.scalars(select(models.Member).order_by(models.Member.id)))
+
+
+def get_member(db: Session, member_id: int) -> models.Member | None:
+    return db.get(models.Member, member_id)
+
+
+def create_member(db: Session, data: schemas.MemberCreate) -> models.Member:
+    return _create(db, models.Member(**_columns(data)))
+
+
+def update_member(
+    db: Session, member_id: int, data: schemas.MemberUpdate
+) -> models.Member | None:
+    return _update(db, models.Member, member_id, data)
+
+
+def delete_member(db: Session, member_id: int) -> bool:
+    """Removing a member leaves its rows shared: the FK is SET NULL, so the
+    ledger loses an attribution and never a record."""
+    return _delete(db, db.get(models.Member, member_id))
+
+
+# What an account's attribution can stamp: money that moved THROUGH it. Dated
+# photographs (snapshots, holdings, valuations, balances) are deliberately not
+# here — a photograph is ascribed through its account, a dated figure through
+# its parent, and stamping those would be a second source of the same fact.
+_ASSIGN_TABLES = (
+    (models.CashEntry, (models.CashEntry.institution_id,)),
+    (models.IncomeSource, (models.IncomeSource.institution_id,)),
+    (models.Expense, (models.Expense.institution_id,)),
+    (models.Transaction, (models.Transaction.institution_id,)),
+    (models.Transfer, (models.Transfer.from_institution_id, models.Transfer.to_institution_id)),
+)
+
+
+def assign_institution(
+    db: Session, institution_id: int, member_id: int | None
+) -> int:
+    """Say whose an account is, and stamp the UNATTRIBUTED history on it.
+
+    The account takes the attribution outright — whose card this IS is the
+    stamp. The rows behind it are stamped only where they still say 共同
+    (member_id NULL): an attribution the reader already gave a row is theirs,
+    and this tool exists for the history nobody has named yet, the statement
+    lane's thousands of rows. Returns how many rows changed.
+
+    `member_id=None` marks the account shared and names no rows: a row cannot
+    be "un-named" in bulk, and null is what unattributed rows already say."""
+    inst = db.get(models.Institution, institution_id)
+    if inst is None:
+        return 0
+    inst.member_id = member_id
+    stamped = 0
+    if member_id is not None:
+        for model, cols in _ASSIGN_TABLES:
+            where = (
+                or_(*(c == institution_id for c in cols))
+                if len(cols) > 1
+                else cols[0] == institution_id
+            )
+            result = db.execute(
+                update(model)
+                .where(where, model.member_id.is_(None))
+                .values(member_id=member_id)
+            )
+            stamped += result.rowcount or 0
+    commit(db)
+    return stamped
+
+# --- Budgets (PRD v3 §4.2, 预算与复盘) -----------------------------------
+
+
+def get_budgets(db: Session) -> list[models.Budget]:
+    return list(
+        db.scalars(select(models.Budget).order_by(models.Budget.year_month, models.Budget.id))
+    )
+
+
+def get_budget(db: Session, budget_id: int) -> models.Budget | None:
+    return db.get(models.Budget, budget_id)
+
+
+def get_budget_at(db: Session, year_month: str, category: str | None) -> models.Budget | None:
+    """The line for exactly this month and category, if there is one."""
+    return db.scalar(
+        select(models.Budget).where(
+            models.Budget.year_month == year_month, models.Budget.category == category
+        )
+    )
+
+
+def create_budget(db: Session, data: schemas.BudgetCreate) -> models.Budget:
+    return _create(db, models.Budget(**_columns(data)))
+
+
+def update_budget(
+    db: Session, budget_id: int, data: schemas.BudgetUpdate
+) -> models.Budget | None:
+    return _update(db, models.Budget, budget_id, data)
+
+
+def delete_budget(db: Session, budget_id: int) -> bool:
+    return _delete(db, db.get(models.Budget, budget_id))
+
+
+def upsert_budget(
+    db: Session, year_month: str, category: str | None, amount: float
+) -> models.Budget:
+    """Write a line's amount for one month, creating it if the month has none.
+
+    What accepting a review's suggestion does ("调至 1,200"): the month it
+    names gets its own line, which supersedes earlier repeating ones from
+    there forward and leaves every past month's budget as it was."""
+    row = get_budget_at(db, year_month, category)
+    if row is not None:
+        row.amount = amount
+    else:
+        row = models.Budget(
+            year_month=year_month, category=category, amount=amount, repeat=True, rollover=False
+        )
+        db.add(row)
+    commit(db)
+    return row
+
+
+# --- Decisions (PRD v3 §4.4): choices kept, nothing moved ----------------
+
+
+def create_decision(db: Session, data: schemas.DecisionCreate) -> models.Decision:
+    row = models.Decision(kind=data.kind, payload=json.dumps(data.payload, ensure_ascii=False))
+    return _create(db, row)
+
+
+def get_decisions(db: Session) -> list[models.Decision]:
+    return list(db.scalars(select(models.Decision).order_by(models.Decision.id.desc())))

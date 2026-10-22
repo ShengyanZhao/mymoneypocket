@@ -54,6 +54,10 @@ import {
   CURRENCY_LIST,
 } from "./ui";
 import { useListEditor, type Draft } from "./listEditor";
+import { getMembers, type Member } from "../api/members";
+import { MemberBar, MemberPicker, HiddenNote, matchesMember, type MemberFilter } from "./MemberPicker";
+import Budgets from "./Budgets";
+import Bills from "./Bills";
 import { inForceIntro, leftOutLine, notCounted, undatedLine } from "./inForce";
 import { EXPENSE as EXPENSE_NEEDS, INCOME as INCOME_NEEDS, PLAN, TRANSFER, marks, refusal, type Need } from "./required";
 import {
@@ -125,6 +129,10 @@ export default function CashFlow({
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [anchors, setAnchors] = useState<CashAnchor[]>([]);
   const [taxonomy, setTaxonomy] = useState<TaxonomyRead | null>(null);
+  // The household and whose rows this page is showing (PRD v3 §4.1). The
+  // filter changes what is SHOWN; every row keeps the attribution it stored.
+  const [members, setMembers] = useState<Member[]>([]);
+  const [filter, setFilter] = useState<MemberFilter>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Up here, not in the plan section: a save reloads this page, which draws
@@ -147,7 +155,7 @@ export default function CashFlow({
     setLoading(true);
     setError(null);
     try {
-      const [s, i, e, t, p, inst, pf, a, tax] = await Promise.all([
+      const [s, i, e, t, p, inst, pf, a, tax, people] = await Promise.all([
         getCashFlowSummary(),
         getIncomeSources(),
         getExpenses(),
@@ -157,12 +165,14 @@ export default function CashFlow({
         getPortfolio(),
         getAllCashAnchors(),
         getTaxonomy(),
+        getMembers(),
       ]);
       // Rows stored under an old code come in through its new name (the
       // taxonomy's aliases): the boxes only ever offer today's words, so an
       // edited row is saved under one and the store converges as it is read.
       const alias = (c: string | null) =>
         c ? (tax.aliases[c] ?? c) : c;
+      setMembers(people);
       setSummary(s);
       setIncomes(i.map((x) => ({ ...x, category: alias(x.category) })));
       setExpenses(e.map((x) => ({ ...x, category: alias(x.category) })));
@@ -199,10 +209,33 @@ export default function CashFlow({
   }, [focus, loading, onFocused]);
 
   if (loading) return <p className="text-ink-soft">{tr("common.loading")}</p>;
-  if (error) return <p className="text-down">{error}</p>;
+  if (error) return <p className="text-bad">{error}</p>;
   // The base the reader chose, as the summary was computed in: what a new row
   // with no account to ask is proposed in.
   const base = summary?.base_currency ?? "";
+  const memberName = (id: number | null) =>
+    id == null ? null : (members.find((m) => m.id === id)?.name ?? null);
+  const shownIncomes = incomes.filter((i) => matchesMember(i.member_id, filter));
+  const shownExpenses = expenses.filter((e) => matchesMember(e.member_id, filter));
+  const shownTransfers = transfers.filter((t) => matchesMember(t.member_id, filter));
+  const hidden =
+    incomes.length -
+    shownIncomes.length +
+    (expenses.length - shownExpenses.length) +
+    (transfers.length - shownTransfers.length);
+  // The four figures, at the level the filter asks for. Under a member they
+  // are that member's SLICE of the same run-rate — the backend splits one
+  // computation, so the slices add back to the household figures exactly —
+  // and the active/passive sentence stays a household sentence, said only
+  // for the household.
+  const slice =
+    filter === "all"
+      ? null
+      : (summary?.by_member.find((s) => s.member_id === filter) ?? null);
+  const flowIncome = slice ? slice.monthly_income : (summary?.monthly_income ?? 0);
+  const flowExpenses = slice ? slice.monthly_expenses : (summary?.monthly_expenses ?? 0);
+  const flowNet = flowIncome - flowExpenses;
+  const flowRate = flowIncome > 0 ? flowNet / flowIncome : null;
   // What the four figures leave out, said under them; each left-out row says
   // its own reason in the lists below.
   const leftOut = summary ? notCounted(summary) : null;
@@ -210,18 +243,26 @@ export default function CashFlow({
 
   return (
     <div className="space-y-8">
+      {members.length > 0 && (
+        <div>
+          <MemberBar members={members} filter={filter} onFilter={setFilter} />
+          <HiddenNote hidden={hidden} filter={filter} />
+        </div>
+      )}
+      <Budgets />
       {summary && (
         <div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <StatCard label={tr("cash.monthlyIncome")} value={money(summary.base_currency).format(summary.monthly_income)} valueClass="text-up" />
-            <StatCard label={tr("cash.monthlyExpenses")} value={money(summary.base_currency).format(summary.monthly_expenses)} valueClass="text-down" />
+            <StatCard label={tr("cash.monthlyIncome")} value={money(summary.base_currency).format(flowIncome)} valueClass="text-good" />
+            <StatCard label={tr("cash.monthlyExpenses")} value={money(summary.base_currency).format(flowExpenses)} valueClass="text-bad" />
             <StatCard
               label={tr("cash.monthlyNet")}
-              value={money(summary.base_currency).format(summary.monthly_net)}
-              valueClass={summary.monthly_net >= 0 ? "text-ink" : "text-down"}
+              value={money(summary.base_currency).format(flowNet)}
+              valueClass={flowNet >= 0 ? "text-ink" : "text-bad"}
             />
-            <StatCard label={tr("dashboard.savingsRate")} value={pct(tr, summary.savings_rate)} valueClass="text-olive" explain={savingsRate()} />
+            <StatCard label={tr("dashboard.savingsRate")} value={pct(tr, flowRate)} valueClass="text-brand" explain={savingsRate()} />
           </div>
+          {filter === "all" && (
           <p className="mt-3 text-sm text-ink-soft">
             {tr("cash.breakdown", {
               active: money(summary.base_currency).format(summary.active_income),
@@ -231,6 +272,7 @@ export default function CashFlow({
             })}
             {inForceIntro()}
           </p>
+          )}
           {(leftOut || undated) && (
             <p className="mt-1 text-sm text-ink-soft">
               {[leftOut && tr("cash.notCountedMarked", { what: leftOut }), undated].filter(Boolean).join(" ")}
@@ -240,10 +282,10 @@ export default function CashFlow({
       )}
 
       <div ref={incomeRef} className="scroll-mt-6">
-        <CashFlowSection spec={INCOME} items={incomes} summary={summary} institutions={institutions} anchors={anchors} base={base} categories={["", ...(taxonomy?.income ?? [])]} instName={instName} onChanged={loadAll} />
+        <CashFlowSection spec={INCOME} items={shownIncomes} summary={summary} institutions={institutions} anchors={anchors} base={base} categories={["", ...(taxonomy?.income ?? [])]} instName={instName} memberName={memberName} members={members} onChanged={loadAll} />
       </div>
       <div ref={expenseRef} className="scroll-mt-6">
-        <CashFlowSection spec={EXPENSE} items={expenses} summary={summary} institutions={institutions} anchors={anchors} base={base} categories={["", ...(taxonomy?.expense ?? [])]} instName={instName} onChanged={loadAll} />
+        <CashFlowSection spec={EXPENSE} items={shownExpenses} summary={summary} institutions={institutions} anchors={anchors} base={base} categories={["", ...(taxonomy?.expense ?? [])]} instName={instName} memberName={memberName} members={members} onChanged={loadAll} />
       </div>
       <PlanSection
         items={plans}
@@ -261,12 +303,13 @@ export default function CashFlow({
           places you already own, so it changes no total. Income, expenses and
           plans do — they belong above it. */}
       <div ref={transferRef} className="scroll-mt-6">
-        <TransferSection items={transfers} institutions={institutions} anchors={anchors} base={base} instName={instName} onChanged={loadAll} />
+        <TransferSection items={shownTransfers} institutions={institutions} anchors={anchors} base={base} instName={instName} memberName={memberName} members={members} onChanged={loadAll} />
       </div>
       {/* The statement lane last: it is how most of these rows will arrive
           now, and what it imports is movements — it changes no recurring
           figure above, which is exactly why the reader can import freely. */}
-      <StatementImport institutions={institutions} onChanged={loadAll} />
+      <Bills institutions={institutions} />
+      <StatementImport institutions={institutions} filter={filter} memberName={memberName} onChanged={loadAll} />
     </div>
   );
 }
@@ -346,6 +389,7 @@ function DateField({
 type CashFlowRow = {
   id: number;
   name: string;
+  member_id: number | null;
   category: string | null;
   amount: number;
   currency: string;
@@ -401,6 +445,8 @@ function CashFlowSection<T extends CashFlowRow, P>({
   base,
   categories,
   instName,
+  members,
+  memberName,
   onChanged,
 }: {
   spec: CashFlowSpec<T, P>;
@@ -417,6 +463,8 @@ function CashFlowSection<T extends CashFlowRow, P>({
   /** The category words, from the backend's taxonomy (blank first). */
   categories: string[];
   instName: (id: number | null) => string | undefined;
+  members: Member[];
+  memberName: (id: number | null) => string | null;
   onChanged: () => Promise<void> | void;
 }) {
   const tr = useT();
@@ -443,6 +491,7 @@ function CashFlowSection<T extends CashFlowRow, P>({
       institutionId: "",
       startDate: todayISO(),
       endDate: "",
+      memberId: "",
     },
     toDraft: (i) => ({
       name: i.name,
@@ -454,6 +503,7 @@ function CashFlowSection<T extends CashFlowRow, P>({
       institutionId: i.institution_id ? String(i.institution_id) : "",
       startDate: i.start_date ?? "",
       endDate: i.end_date ?? "",
+      memberId: i.member_id != null ? String(i.member_id) : "",
     }),
     needs: spec.needs,
     toPayload: (d) => {
@@ -467,6 +517,7 @@ function CashFlowSection<T extends CashFlowRow, P>({
           institution_id: d.institutionId ? Number(d.institutionId) : null,
           start_date: d.startDate || null,
           end_date: d.endDate || null,
+          member_id: d.memberId ? Number(d.memberId) : null,
         },
         d.tag || null,
       );
@@ -481,6 +532,15 @@ function CashFlowSection<T extends CashFlowRow, P>({
   return (
     <Section title={tr(spec.titleKey)} hint={tr(spec.hintKey)} note={firstPaymentNote()}>
       <form onSubmit={ed.submit} className="flex flex-wrap items-center gap-2">
+        {members.length > 0 && (
+          <div className="w-full">
+            <MemberPicker
+              members={members}
+              value={ed.draft.memberId ? Number(ed.draft.memberId) : null}
+              onChange={(v) => ed.set("memberId")(v == null ? "" : String(v))}
+            />
+          </div>
+        )}
         <input className={inputClass} aria-label={tr("cash.name")} {...marks(spec.needs, "name")} value={ed.draft.name} onChange={(e) => ed.set("name")(e.target.value)} />
         <select className={inputClass} value={ed.draft.tag} onChange={(e) => ed.set("tag")(e.target.value)}>
           {spec.tagOptions.map((t) => (<option key={t} value={t}>{t ? (codeWord(spec.tagPrefix, t) ?? t) : tr(spec.tagBlankKey)}</option>))}
@@ -505,7 +565,7 @@ function CashFlowSection<T extends CashFlowRow, P>({
         <DateField label={tr("cash.end")} value={ed.draft.endDate} onChange={ed.set("endDate")} />
         <EditorButtons editing={ed.editing} submitting={ed.submitting} onCancel={ed.reset} />
       </form>
-      {ed.error && <p className="text-down">{ed.error}</p>}
+      {ed.error && <p className="text-bad">{ed.error}</p>}
       <RowsOrEmpty loading={false} error={null} empty={items.length === 0} emptyText={tr(spec.emptyKey)}>
         {items.map((i) => (
           <Row
@@ -514,7 +574,7 @@ function CashFlowSection<T extends CashFlowRow, P>({
             onDelete={() => void ed.destroy(i)}
             title={i.name}
             badge={codeWord(spec.tagPrefix, spec.tagOf(i))}
-            subtitle={subtitle([codeWord("cash.category", i.category), codeWord("cash.frequency", i.frequency), instName(i.institution_id), dateRange(tr, i.start_date, i.end_date)])}
+            subtitle={subtitle([codeWord("cash.category", i.category), codeWord("cash.frequency", i.frequency), instName(i.institution_id), memberName(i.member_id), dateRange(tr, i.start_date, i.end_date)])}
             detail={summary ? leftOutLine(summary, spec.side, i.id) : undefined}
             note={i.notes}
             value={money(i.currency).format(i.amount)}
@@ -572,6 +632,8 @@ function TransferSection({
   anchors,
   base,
   instName,
+  members,
+  memberName,
   onChanged,
 }: {
   items: Transfer[];
@@ -582,11 +644,14 @@ function TransferSection({
       anchor of its account in force on the transfer's date. */
   anchors: CashAnchor[];
   instName: (id: number | null) => string | undefined;
+  members: Member[];
+  memberName: (id: number | null) => string | null;
   onChanged: () => Promise<void> | void;
 }) {
   const tr = useT();
   const [editId, setEditId] = useState<number | null>(null);
   const [date, setDate] = useState(todayISO());
+  const [memberId, setMemberId] = useState("");
   const [fromId, setFromId] = useState("");
   const [toId, setToId] = useState("");
   const [amount, setAmount] = useState("");
@@ -611,6 +676,7 @@ function TransferSection({
     setCurrencyChoice(null);
     setToCurrencyChoice(null);
     setArrived("");
+    setMemberId("");
   }
 
   function startEdit(t: Transfer) {
@@ -623,6 +689,7 @@ function TransferSection({
     // moving its date or its accounts does not rewrite it.
     setCurrencyChoice(t.currency);
     setToCurrencyChoice(t.to_currency);
+    setMemberId(t.member_id != null ? String(t.member_id) : "");
     // A credit the reader typed comes back into the box; one worked out from a
     // rate does not, so that changing the date works it out again.
     setArrived(t.fx_as_of == null && !sameSum(t) ? String(t.to_amount) : "");
@@ -665,6 +732,7 @@ function TransferSection({
       // Only when the reader has it: otherwise the backend works it out and
       // records the rate's day.
       to_amount: showArrived && arrived !== "" ? Number(arrived) : null,
+      member_id: memberId ? Number(memberId) : null,
     };
     try {
       if (editId != null) await updateTransfer(editId, payload);
@@ -703,6 +771,15 @@ function TransferSection({
       hint={tr("cash.transfersHint")}
     >
       <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
+        {members.length > 0 && (
+          <div className="w-full">
+            <MemberPicker
+              members={members}
+              value={memberId ? Number(memberId) : null}
+              onChange={(v) => setMemberId(v == null ? "" : String(v))}
+            />
+          </div>
+        )}
         <DateField label={tr("cash.on")} value={date} onChange={setDate} mark={marks(TRANSFER, "date")} />
         <InstitutionSelect value={fromId} onChange={setFromId} institutions={institutions} placeholder={tr("cash.fromExternal")} />
         <span className="text-ink-faint">→</span>
@@ -746,7 +823,7 @@ function TransferSection({
           </button>
         )}
       </form>
-      {error && <p className="text-down">{error}</p>}
+      {error && <p className="text-bad">{error}</p>}
       <RowsOrEmpty loading={false} error={null} empty={items.length === 0} emptyText={tr("cash.noTransfers")}>
         {items.map((t) => (
           <Row
@@ -756,6 +833,7 @@ function TransferSection({
             title={`${instName(t.from_institution_id) ?? tr("cash.external")} → ${instName(t.to_institution_id) ?? tr("cash.external")}`}
             subtitle={[
               t.date,
+              memberName(t.member_id),
               // A credit fixed at one day's rate says which day, so it can be
               // held against the statement.
               t.fx_as_of ? tr("cash.atEcbRate", { date: t.fx_as_of }) : null,
@@ -1182,7 +1260,7 @@ function PlanSection({
                     setStartDate(next);
                     setPressed(next);
                   }}
-                  className="rounded-sm border border-olive px-3 py-1 text-xs font-medium text-olive transition hover:bg-surface"
+                  className="rounded-sm border border-brand px-3 py-1 text-xs font-medium text-brand transition hover:bg-surface"
                 >
                   {warning.button}
                 </button>
@@ -1231,7 +1309,7 @@ function PlanSection({
                 <button
                   type="button"
                   onClick={() => setTargets((ts) => ts.filter((x) => x.key !== t.key))}
-                  className="rounded-sm px-2 py-1 text-sm text-ink-faint hover:text-down"
+                  className="rounded-sm px-2 py-1 text-sm text-ink-faint hover:text-bad"
                   title={tr("cash.removeTarget")}
                 >
                   ×
@@ -1243,7 +1321,7 @@ function PlanSection({
             <button
               type="button"
               onClick={() => setTargets((ts) => [...ts, emptyTarget(sourceId)])}
-              className="rounded-sm text-sm text-olive hover:underline"
+              className="rounded-sm text-sm text-brand hover:underline"
             >
               {tr("cash.addAnother")}
             </button>
@@ -1269,14 +1347,14 @@ function PlanSection({
           )}
         </div>
       </form>
-      {error && <p className="text-down">{error}</p>}
+      {error && <p className="text-bad">{error}</p>}
       {saved && (
         <p className="text-sm text-ink-soft">
           {afterSaveLine(saved.name, saved.start)}{" "}
           {saved.accounts.map((i, n) => (
             <span key={i.id}>
               {n > 0 && " · "}
-              <button type="button" onClick={() => onOpenAccount(i)} className="text-olive underline-offset-2 hover:underline">
+              <button type="button" onClick={() => onOpenAccount(i)} className="text-brand underline-offset-2 hover:underline">
                 {tr("cash.openAccount", { name: i.name })}
               </button>
             </span>

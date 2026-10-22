@@ -187,6 +187,87 @@ API_OUT = ConfigDict(
     json_schema_serialization_defaults_required=True,
 )
 
+class MemberBase(BaseModel):
+    """Who a member of the household is (PRD v3 §4.1, 家庭账本).
+
+    A MEMBERSHIP dimension, not a login: one database, one reader. Members let
+    a couple each record their own spending and still read one household
+    picture. Every row of money may name one; null is 共同 (shared)."""
+
+    name: str = Field(..., min_length=1, description="How this person is called here")
+    role: str | None = Field(
+        default=None, description="self | spouse | child | parent | other (display only)"
+    )
+
+
+class MemberCreate(MemberBase):
+    """Payload to add a member of the household."""
+
+
+class MemberUpdate(BaseModel):
+    """Payload to rename a member or change how it is described. Its rows move
+    only through the batch-assign route: an edit of the person is not an edit
+    of everything they have ever paid for."""
+
+    name: str | None = Field(default=None, min_length=1)
+    role: str | None = None
+
+
+class MemberRead(MemberBase):
+    """A member as the API returns it."""
+
+    model_config = API_OUT
+
+    id: int
+    created_at: str
+
+
+class MemberAssign(BaseModel):
+    """Who an account is, for the batch-assign route. Null marks it shared
+    (共同) and names no rows."""
+
+    member_id: int | None = Field(default=None, description="The member; null = shared")
+
+
+class MemberAssignResult(BaseModel):
+    """What one batch-assign stamped: the account, whose it now is, and how
+    many rows carry the attribution — said so the reader can see the tool
+    reached the history and not only the account's name."""
+
+    model_config = API_OUT
+
+    institution_id: int
+    member_id: int | None
+    stamped: int = Field(..., description="Rows whose attribution now says this member")
+
+
+class MemberWorthSlice(BaseModel):
+    """One member's share of the household net worth: their accounts' cash and
+    positions, their real assets, less their debts. The slices plus the shared
+    one (`member_id` null) sum exactly to `net_worth` — one walk, one set of
+    conversions, so the parts cannot drift from the whole."""
+
+    model_config = API_OUT
+
+    member_id: int | None = Field(..., description="Null is the shared slice (共同)")
+    name: str | None = None
+    role: str | None = None
+    net_worth: float
+
+
+class MemberFlowSlice(BaseModel):
+    """One member's share of the monthly run-rate: the recurring income and
+    expenses attributed to them. Sums plus the shared slice equal the summary's
+    `monthly_income`/`monthly_expenses` by construction."""
+
+    model_config = API_OUT
+
+    member_id: int | None = Field(..., description="Null is the shared slice (共同)")
+    name: str | None = None
+    monthly_income: float
+    monthly_expenses: float
+
+
 class InstitutionBase(BaseModel):
     """Fields shared between input and output."""
 
@@ -194,6 +275,10 @@ class InstitutionBase(BaseModel):
     # bank | broker | insurance | pension_fund | crypto_exchange | other
     type: str | None = Field(default=None, description="Institution type")
     notes: str | None = Field(default=None, description="Free-form notes")
+    member_id: int | None = Field(
+        default=None, description="Whose this is; null = 共同 (shared, the household's)"
+    )
+
 
 
 class InstitutionCreate(InstitutionBase):
@@ -382,6 +467,10 @@ class RealAssetBase(BaseModel):
         default=None, description="Value at acquisition time"
     )
     notes: str | None = Field(default=None, description="Free-form notes")
+    member_id: int | None = Field(
+        default=None, description="Whose this is; null = 共同 (shared, the household's)"
+    )
+
 
 
 class RealAssetCreate(RealAssetBase):
@@ -440,6 +529,22 @@ class LiabilityBase(BaseModel):
         default=None, description="Real asset this debt finances (mortgage -> house)"
     )
     notes: str | None = Field(default=None, description="Free-form notes")
+    terms: dict | None = Field(
+        default=None,
+        description=(
+            "The loan's plan (PRD v3 §4.4): combined-loan parts with their "
+            "principal, rate, method, term and paid periods. Empty = tracked "
+            "by its dated balances alone."
+        ),
+    )
+    installment_plan: dict | None = Field(
+        default=None,
+        description="The instalment a fee is quoted on: count, per_period, principal, fee_rate",
+    )
+    member_id: int | None = Field(
+        default=None, description="Whose this is; null = 共同 (shared, the household's)"
+    )
+
 
 
 class LiabilityCreate(LiabilityBase):
@@ -448,10 +553,130 @@ class LiabilityCreate(LiabilityBase):
     currency: StatedCurrency = Field(..., description="Currency, e.g. EUR")
 
 
+class PaymentRow(BaseModel):
+    """One month of a loan's plan, as the schedule table prints it: every
+    part's payments of that month, summed."""
+
+    model_config = API_OUT
+
+    date: str
+    payment: float
+    principal: float
+    interest: float
+    remaining: float
+
+
+class InterestYear(BaseModel):
+    model_config = API_OUT
+
+    year: int
+    paid: float
+    due: float
+
+
+class LoanPlanRead(BaseModel):
+    """The plan beside the reader's own balances.
+
+    `difference` is the anchor's verdict on the plan: what the bank's
+    recorded balance is against what the plan says is left. It is usually a
+    prepayment, and the page says so rather than leaving the gap unspoken."""
+
+    model_config = API_OUT
+
+    liability_id: int
+    name: str
+    currency: str
+    parts: list[dict]
+    schedule: list[PaymentRow]
+    interest_by_year: list[InterestYear]
+    monthly_payment: float
+    plan_remaining: float
+    stated_balance: float | None
+    difference: float | None
+    installment: dict | None = Field(
+        default=None,
+        description=(
+            "The instalment plan with BOTH rates named: the fee arithmetic "
+            "('名义费率') and the IRR of its flows ('实际年化'). A fee is "
+            "charged on the original sum while the principal is paid down "
+            "every period — the gap between the two is the point."
+        ),
+    )
+    base_currency: BaseCurrency
+
+
+class PrepayRequest(BaseModel):
+    """What paying early is weighed against."""
+
+    amount: float = Field(..., gt=0)
+    mode: str | None = Field(
+        default=None,
+        description="shorten | reduce — empty compares BOTH, as the decision card does",
+    )
+    expected_return: float = Field(default=0.05, ge=0, le=1, description="What the money would earn invested")
+    volatility: float = Field(default=0.15, ge=0, le=1, description="The width of that projection's range")
+
+
+class PrepayOption(BaseModel):
+    model_config = API_OUT
+
+    mode: str
+    amount: float
+    saved_interest: float
+    months_saved: int
+    old_payment: float
+    new_payment: float
+    expected_return: float
+    invested_value: float
+    invested_range: list[float]
+    volatility: float
+
+
+class PrepayComparison(BaseModel):
+    model_config = API_OUT
+
+    liability_id: int
+    base_currency: BaseCurrency
+    options: list[PrepayOption]
+
+
+class DecisionBase(BaseModel):
+    """A choice kept: what was weighed, and what it came to. Moves nothing."""
+
+    kind: str = Field(..., description="prepay_mortgage | ...")
+    payload: dict
+
+
+class DecisionCreate(DecisionBase):
+    ...
+
+
+class DecisionRead(DecisionBase):
+    model_config = API_OUT
+
+    id: int
+    created_at: str
+
+    @field_validator("payload", mode="before")
+    @classmethod
+    def _json_text(cls, v):
+        if isinstance(v, str):
+            return json.loads(v) if v else {}
+        return v
+
+
 class LiabilityRead(LiabilityBase):
     """A stored liability. `latest_balance` = most recent outstanding balance."""
 
     model_config = API_OUT
+
+    @field_validator("terms", "installment_plan", mode="before")
+    @classmethod
+    def _json_text(cls, v):
+        """The store keeps JSON text; the API speaks JSON."""
+        if isinstance(v, str):
+            return json.loads(v) if v else None
+        return v
 
     id: int
     latest_balance: float | None
@@ -625,6 +850,13 @@ class DashboardSummary(BaseModel):
     real_assets: int
     liabilities: int
     as_of: datetime.date | None
+    by_member: list[MemberWorthSlice] = Field(
+        default_factory=list,
+        description=(
+            "The same net worth split by whose it is, shared rows (共同) in the "
+            "null slice. Slices sum to `net_worth`; nothing is counted twice."
+        ),
+    )
 
 
 class AssetClassSlice(BaseModel):
@@ -1331,6 +1563,10 @@ class CashFlowItemBase(BaseModel):
         default=None, description="Last occurrence (optional; open-ended if null)"
     )
     notes: str | None = Field(default=None, description="Free-form notes")
+    member_id: int | None = Field(
+        default=None, description="Whose this is; null = 共同 (shared, the household's)"
+    )
+
 
 
 class IncomeSourceBase(CashFlowItemBase):
@@ -1436,6 +1672,13 @@ class CashFlowSummary(BaseModel):
     )
     ended: list[FlowNotCounted] = Field(..., description="Ended before today: no longer counted")
     base_currency: BaseCurrency
+    by_member: list[MemberFlowSlice] = Field(
+        default_factory=list,
+        description=(
+            "The same run-rate split by whose flows they are, shared (共同) in "
+            "the null slice. Slices sum to the monthly figures above."
+        ),
+    )
 
 
 # --- Cash register: anchors, transfers, projected positions ---------------
@@ -1477,6 +1720,10 @@ class TransferBase(BaseModel):
     to_institution_id: int | None = Field(
         default=None, description="Target institution id"
     )
+    member_id: int | None = Field(
+        default=None, description="Whose this is; null = 共同 (shared, the household's)"
+    )
+
     amount: float = Field(..., gt=0, description="Amount that left the source, in `currency`")
     currency: str = Field(..., description="Currency of the source side, e.g. EUR")
     to_amount: float | None = Field(
@@ -1560,6 +1807,359 @@ class CashPosition(BaseModel):
     base_currency: BaseCurrency
 
 
+# --- Budgets and monthly reviews (PRD v3 §4.2, 预算与复盘) -----------------
+
+
+class BudgetBase(BaseModel):
+    """What a month's spending may reach. One row per category per month it
+    starts applying from; `category` null is the household's overall ceiling.
+    Amounts are in the BASE currency. A budget never blocks a row: it only
+    says how a fact sits against a plan."""
+
+    year_month: str = Field(
+        ..., pattern=r"^\d{4}-\d{2}$", description="The month it applies from (YYYY-MM)"
+    )
+    category: str | None = Field(default=None, description="Taxonomy code; null = 总预算")
+    amount: float = Field(..., ge=0, description="The limit, in the base currency")
+    repeat: bool = Field(
+        default=True,
+        description="True: every month from `year_month` on; false: that month only",
+    )
+    rollover: bool = Field(
+        default=False, description="Carry the unused part into the next month"
+    )
+
+
+class BudgetCreate(BudgetBase):
+    """A budget line, or a new line superseding an older one from its month."""
+
+
+class BudgetUpdate(BaseModel):
+    """An edit of a line's size and habits. Its month and category are the
+    line's identity — changing one is a new line, not an edit."""
+
+    amount: float | None = Field(default=None, ge=0)
+    repeat: bool | None = None
+    rollover: bool | None = None
+
+
+class BudgetRead(BudgetBase):
+    model_config = API_OUT
+
+    id: int
+    created_at: str
+
+
+class BudgetSlice(BaseModel):
+    """One line of the overview: what it may reach, what it has reached."""
+
+    model_config = API_OUT
+
+    id: int = Field(..., description="The line in force — what an edit edits")
+    category: str | None
+    budget: float = Field(..., description="In force, including any carried-over surplus")
+    stated: float = Field(..., description="The line's own amount")
+    carried: float = Field(..., description="What rollover brought in")
+    spent: float
+    remaining: float
+    ratio: float = Field(..., description="spent / budget")
+    days_left: int
+    daily: float | None = Field(
+        default=None,
+        description="remaining / days_left — 'this month you may still spend 182 a day'",
+    )
+    repeat: bool
+    rollover: bool
+
+
+class BudgetOverview(BaseModel):
+    model_config = API_OUT
+
+    month: str
+    base_currency: BaseCurrency
+    slices: list[BudgetSlice]
+    total_budget: float = Field(
+        ..., description="The household ceiling if one is set, else the sum of the lines"
+    )
+    total_spent: float
+    days_left: int
+
+
+class CategoryAmount(BaseModel):
+    model_config = API_OUT
+
+    category: str | None
+    amount: float
+
+
+class MonthActuals(BaseModel):
+    """What actually moved in a month. The two voices of the cash register,
+    each payment once: entries where an entry carried it, recurring flows
+    where none did."""
+
+    model_config = API_OUT
+
+    month: str
+    base_currency: BaseCurrency
+    spent_by_category: list[CategoryAmount]
+    earned_by_category: list[CategoryAmount]
+    spent_total: float
+    income_total: float
+    flexible_total: float = Field(..., description="The entries' share of the spending")
+    fixed_total: float = Field(..., description="The recurring lane's uncovered payments")
+    entry_count: int
+    days_with_entries: int
+
+
+class ReviewMover(BaseModel):
+    """A category whose spending moved most, with the rows that moved it.
+
+    `entry_ids` are the very rows behind the sentence: an attribution and its
+    evidence are shown together, never one without the other."""
+
+    model_config = API_OUT
+
+    category: str | None
+    delta: float
+    spent: float
+    prev_spent: float
+    reason_counterparty: str | None
+    reason_count: int
+    entry_ids: list[int]
+
+
+class ReviewSuggestion(BaseModel):
+    """One line the reader may take or dismiss. The WORDS are composed by the
+    page in its own language; this is only the fact and the number."""
+
+    model_config = API_OUT
+
+    key: str
+    kind: str = Field(..., description="raise | lower | categorize")
+    category: str | None
+    proposed_amount: float | None
+    month: str
+    resolution: str | None = Field(
+        default=None, description="accepted | ignored once the reader decided"
+    )
+
+
+class MonthReviewRead(BaseModel):
+    """Everything worth saying about a month — computed from the rows each
+    time it is read, so it can never disagree with them."""
+
+    model_config = API_OUT
+
+    month: str
+    prev_month: str
+    base_currency: BaseCurrency
+    income: float
+    prev_income: float
+    expenses: float
+    prev_expenses: float
+    flexible_total: float
+    fixed_total: float
+    savings_rate: float | None
+    net_worth: float
+    prev_net_worth: float
+    entry_count: int
+    days_with_entries: int
+    uncategorized: int
+    budget: BudgetOverview
+    movers: list[ReviewMover]
+    suggestions: list[ReviewSuggestion]
+    resolved: dict[str, str]
+
+
+class ReviewResolution(BaseModel):
+    """What the reader did with one suggestion. `accepted` with an `amount`
+    writes that amount into the category's budget from next month."""
+
+    year_month: str = Field(..., pattern=r"^\d{4}-\d{2}$")
+    key: str
+    action: str = Field(..., description="accepted | ignored")
+    amount: float | None = Field(default=None, ge=0)
+
+
+# --- Bills, the calendar and the forecast (PRD v3 §4.3) -------------------
+
+
+class BillScheduleBase(BaseModel):
+    """Money that will move on a day the flow vocabulary cannot name: the
+    credit card's due date, the school's own months, the salary of the last
+    workday. `amount` empty means it varies — the date is kept and the sum
+    counts as nothing rather than as a guess."""
+
+    name: str = Field(..., min_length=1)
+    kind: str | None = Field(
+        default=None,
+        description="credit_card | installment | insurance | tuition | rent | mortgage | salary | custom",
+    )
+    direction: str = Field(default="out", description="in | out")
+    amount: float | None = Field(default=None, ge=0, description="Empty = it varies")
+    currency: StatedCurrency | None = Field(default=None, description="Empty = the base currency")
+    institution_id: int | None = Field(default=None, description="The account it draws on / lands in")
+    member_id: int | None = None
+    due_day: int | None = Field(default=None, ge=1, le=31, description="Day of the month, clamped to a short one")
+    due_last_workday: bool = Field(default=False, description="China's last working day of the month")
+    months: list[int] | None = Field(
+        default=None, description="The bill's own months (1–12); empty = every month"
+    )
+    remind_days: int = Field(default=3, ge=0, le=60)
+    start_date: datetime.date | None = None
+    end_date: datetime.date | None = None
+    note: str | None = None
+
+    @model_validator(mode="after")
+    def _one_due_rule(self):
+        if (self.due_day is None) == (not self.due_last_workday):
+            raise ValueError("name exactly one: a due day, or the last workday")
+        if self.months and any(m < 1 or m > 12 for m in self.months):
+            raise ValueError("months are 1 through 12")
+        return self
+
+
+class BillScheduleCreate(BillScheduleBase):
+    """A bill the calendar should know about."""
+
+
+class BillScheduleUpdate(BaseModel):
+    """An edit of a bill's habits. Its name, kind and account follow it."""
+
+    name: str | None = Field(default=None, min_length=1)
+    kind: str | None = None
+    direction: str | None = None
+    amount: float | None = Field(default=None, ge=0)
+    currency: StatedCurrency | None = None
+    institution_id: int | None = None
+    member_id: int | None = None
+    due_day: int | None = Field(default=None, ge=1, le=31)
+    due_last_workday: bool | None = None
+    months: list[int] | None = None
+    remind_days: int | None = Field(default=None, ge=0, le=60)
+    start_date: datetime.date | None = None
+    end_date: datetime.date | None = None
+    note: str | None = None
+
+
+class BillScheduleRead(BillScheduleBase):
+    model_config = API_OUT
+
+    id: int
+    created_at: str
+
+
+class CalendarMovement(BaseModel):
+    """One expected movement on one day. `source` names the voice that said
+    it (flow | bill | entry | transfer | pac); `stated` false means the sum
+    is not known (a card's bill) and counts as nothing in every total."""
+
+    model_config = API_OUT
+
+    date: str
+    name: str
+    direction: str
+    amount: float | None
+    base_amount: float | None
+    stated: bool
+    source: str
+    institution_id: int | None
+    institution_name: str | None
+    category: str | None
+
+
+class CalendarPage(BaseModel):
+    """The month's expected movements, by day."""
+
+    model_config = API_OUT
+
+    month: str
+    base_currency: BaseCurrency
+    days: dict[str, list[CalendarMovement]]
+    unpriced: int = Field(..., description="Movements whose sum is not known")
+    calendar_covers: dict = Field(..., description="What the workday table knows")
+
+
+class ForecastPoint(BaseModel):
+    model_config = API_OUT
+
+    date: str
+    balance: float
+    net: float
+
+
+class ForecastAccount(BaseModel):
+    model_config = API_OUT
+
+    institution_id: int
+    institution_name: str | None
+    start_balance: float
+    points: list[ForecastPoint]
+
+
+class CoverOption(BaseModel):
+    """An account that could cover a gap. A suggestion to move money — the
+    app never moves any."""
+
+    model_config = API_OUT
+
+    institution_id: int
+    institution_name: str | None
+    surplus: float
+
+
+class ForecastGap(BaseModel):
+    """A SPELL below zero: the day it starts, how long it lasts, its deepest
+    deficit and what walked it there."""
+
+    model_config = API_OUT
+
+    date: str
+    days: int = Field(default=1, description="How long the thin stretch lasts")
+    institution_id: int
+    institution_name: str | None
+    deficit: float
+    causes: list[CalendarMovement] = Field(..., description="The movements that walked it down")
+    cover: list[CoverOption]
+
+
+class CashForecast(BaseModel):
+    """The balances the coming days hold. `from_` is the horizon's first
+    day: the engine speaks "from", a field name cannot, and the alias carries
+    it across."""
+
+    model_config = API_OUT
+
+    horizon_days: int
+    base_currency: BaseCurrency
+    from_: str = Field(alias="from")
+    to: str
+    accounts: list[ForecastAccount]
+    gaps: list[ForecastGap]
+    unpriced: int
+    calendar_covers: dict
+
+
+class UpcomingBill(BaseModel):
+    """A movement due soon, with whether the account holds enough for it."""
+
+    model_config = API_OUT
+
+    date: str
+    name: str
+    direction: str
+    amount: float | None
+    base_amount: float | None
+    stated: bool
+    source: str
+    institution_id: int | None
+    institution_name: str | None
+    category: str | None
+    days_until: int
+    balance_today: float
+    enough: bool
+
+
 # --- Cash entries: statement imports & one-off movements ------------------
 
 
@@ -1582,6 +2182,10 @@ class CashEntryBase(BaseModel):
         default=None, description="alipay | wechat | bank_card | cash | other"
     )
     note: str | None = Field(default=None, description="Free-form notes")
+    member_id: int | None = Field(
+        default=None, description="Whose this is; null = 共同 (shared, the household's)"
+    )
+
 
 
 class CashEntryCreate(CashEntryBase):
@@ -1603,6 +2207,7 @@ class CashEntryUpdate(BaseModel):
     counterparty: str | None = None
     channel: str | None = None
     note: str | None = None
+    member_id: int | None = None
 
 
 class CashEntryRead(CashEntryBase):
@@ -1829,6 +2434,10 @@ class GoalBase(BaseModel):
     current_amount: float | None = Field(default=None, ge=0)
     monthly_contribution: float | None = Field(default=None, ge=0)
     notes: str | None = None
+    member_id: int | None = Field(
+        default=None, description="Whose this is; null = 共同 (shared, the household's)"
+    )
+
 
 
 class GoalCreate(GoalBase):
@@ -2054,6 +2663,10 @@ class TransactionBase(BaseModel):
         default=None,
         description="Institution whose cash paid (defaults to institution_id)",
     )
+    member_id: int | None = Field(
+        default=None, description="Whose this is; null = 共同 (shared, the household's)"
+    )
+
     # Not only a label: a sell or a close is matched back to the position it
     # settles by symbol OR by asset_name, and a close is the one kind allowed
     # no symbol — so for those rows this string is the whole binding.

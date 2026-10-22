@@ -240,7 +240,7 @@ export function InstrumentPicker({
           )}
           {mine.length > 0 && (
             <div className="flex items-baseline justify-between border-b border-rule bg-tint px-3 py-1.5">
-              <span className="text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-olive">
+              <span className="text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-brand">
                 {tr("instrument.owned")}
               </span>
               <span className="text-[0.6rem] text-ink-faint">{tr("instrument.ownedHint")}</span>
@@ -274,7 +274,7 @@ export function InstrumentPicker({
           ))}
           {(liveBusy || (live?.results.length ?? 0) > 0 || live?.reachable === false) && (
             <div className="flex items-baseline justify-between border-b border-rule bg-tint px-3 py-1.5">
-              <span className="text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-olive">
+              <span className="text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-brand">
                 {tr("instrument.live")}
               </span>
               <span className="text-[0.6rem] text-ink-faint">
@@ -349,7 +349,7 @@ export function InstrumentPicker({
             // what stops a plausible-looking row from being read as the thing
             // that was asked for. It is not hidden, it is placed.
             <div className="flex items-baseline justify-between border-b border-rule bg-tint px-3 py-1.5">
-              <span className="text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-olive">
+              <span className="text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-brand">
                 {tr("instrument.funds")}
               </span>
               <span className="text-[0.6rem] text-ink-faint">
@@ -386,7 +386,7 @@ export function InstrumentPicker({
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm text-ink">{m.name}</span>
                     <span className="block truncate text-[0.65rem] text-ink-soft">
-                      <span className={m.distribution_policy === "dist" ? "text-up" : undefined}>
+                      <span className={m.distribution_policy === "dist" ? "text-brand" : undefined}>
                         {policyWord(m.distribution_policy) ?? tr("instrument.policyUnknown")}
                       </span>
                       {" · "}

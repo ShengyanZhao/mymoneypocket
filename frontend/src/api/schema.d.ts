@@ -116,6 +116,153 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Bills */
+        get: operations["list_bills_api_bills_get"];
+        put?: never;
+        /** Create Bill */
+        post: operations["create_bill_api_bills_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bills/{bill_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Bill */
+        delete: operations["delete_bill_api_bills__bill_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Bill */
+        patch: operations["update_bill_api_bills__bill_id__patch"];
+        trace?: never;
+    };
+    "/api/bills/upcoming": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Upcoming
+         * @description What is due in the days ahead, soonest first, each with whether the
+         *     account holds enough for it today.
+         */
+        get: operations["upcoming_api_bills_upcoming_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/budgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Budgets
+         * @description Every budget line, oldest first.
+         */
+        get: operations["list_budgets_api_budgets_get"];
+        put?: never;
+        /**
+         * Create Budget
+         * @description A budget line. One per (month, category): to change a line from a
+         *     month onward is to add a new line starting there, which supersedes the
+         *     old one exactly where it should.
+         */
+        post: operations["create_budget_api_budgets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/budgets/{budget_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Budget */
+        delete: operations["delete_budget_api_budgets__budget_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Budget
+         * @description Change how much a line allows, or its habits. Its month and category
+         *     are its identity — those changes are a new line.
+         */
+        patch: operations["update_budget_api_budgets__budget_id__patch"];
+        trace?: never;
+    };
+    "/api/budgets/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Overview
+         * @description Every line of `month` against what has been spent of it: progress,
+         *     what is left, and the daily allowance the days left allow.
+         */
+        get: operations["overview_api_budgets_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Calendar
+         * @description The month's expected movements, by day: flows, bills, entries already
+         *     recorded, transfers dated ahead and the plan's buys — one payment once.
+         */
+        get: operations["calendar_api_calendar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cash-anchors": {
         parameters: {
             query?: never;
@@ -524,6 +671,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Decisions
+         * @description Every comparison the reader saved, newest first.
+         */
+        get: operations["list_decisions_api_decisions_get"];
+        put?: never;
+        /**
+         * Create Decision
+         * @description Keep a choice. This writes no balance and moves no money — executing
+         *     the choice is a dated balance row the reader writes when it happens.
+         */
+        post: operations["create_decision_api_decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/expenses": {
         parameters: {
             query?: never;
@@ -556,6 +728,28 @@ export interface paths {
         post?: never;
         /** Delete an expense */
         delete: operations["delete_item_api_expenses__item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/forecast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Forecast
+         * @description Every account's balance for the days ahead, and where one runs thin:
+         *     the gap's date, its deficit, the movements that got it there, and which
+         *     accounts could cover it. A suggestion to move money — never a move made.
+         */
+        get: operations["forecast_api_forecast_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -878,6 +1072,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/institutions/{institution_id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assign Institution
+         * @description Say whose account this is, and stamp the history on it nobody named.
+         *
+         *     Rows that already name somebody keep their attribution — see
+         *     `crud.assign_institution`. `member_id: null` marks the account shared.
+         */
+        post: operations["assign_institution_api_institutions__institution_id__assign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/institutions/{institution_id}/cash": {
         parameters: {
             query?: never;
@@ -1172,6 +1389,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/liabilities/{liability_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Loan Plan
+         * @description The schedule the loan's own terms describe, beside the balance the
+         *     reader recorded. `difference` is the gap between them — usually a
+         *     prepayment, and named rather than left silent.
+         */
+        get: operations["loan_plan_api_liabilities__liability_id__plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/liabilities/{liability_id}/prepay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepay
+         * @description What paying `amount` early saves, against what it would earn invested.
+         *     With no mode named, BOTH answers arrive — the decision card compares
+         *     them side by side. Moves nothing: saving the comparison is a Decision,
+         *     and executing it is a dated balance the reader writes.
+         */
+        post: operations["prepay_api_liabilities__liability_id__prepay_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/liability-balances/{balance_id}": {
         parameters: {
             query?: never;
@@ -1191,6 +1453,77 @@ export interface paths {
          * @description Delete a liability balance.
          */
         delete: operations["delete_balance_api_liability_balances__balance_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Members
+         * @description The household, oldest first.
+         */
+        get: operations["list_members_api_members_get"];
+        put?: never;
+        /**
+         * Create Member
+         * @description Add someone to the household. Nothing else happens: their first row
+         *     names them when the reader says it does.
+         */
+        post: operations["create_member_api_members_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/members/{member_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Member
+         * @description Remove a member. Their rows go on saying what they said, shared (共同):
+         *     the ledger loses an attribution and never a record.
+         */
+        delete: operations["delete_member_api_members__member_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Member
+         * @description Rename a member or change how they are described. Their rows are not
+         *     touched: an edit of the person is not an edit of everything they paid for.
+         */
+        patch: operations["update_member_api_members__member_id__patch"];
+        trace?: never;
+    };
+    "/api/months/actuals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Actuals
+         * @description What actually moved in a month, per category, each payment once.
+         */
+        get: operations["actuals_api_months_actuals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1383,6 +1716,53 @@ export interface paths {
          * @description Add a dated valuation to a real asset (409 if one already exists for that date).
          */
         post: operations["create_valuation_api_real_assets__real_asset_id__valuations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review
+         * @description The month, computed from its rows: the totals and their change, where
+         *     the budget went, what moved most (with the rows that moved it), and at
+         *     most three suggestions.
+         */
+        get: operations["review_api_reviews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviews/resolutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve
+         * @description Record what the reader did with one suggestion.
+         *
+         *     ACCEPTED WITH AN AMOUNT writes that amount into the category's budget
+         *     from the month after the review — "调至 1,200" is a change to next
+         *     month's line, and the current month keeps what it was. Ignoring only
+         *     stops the suggestion coming back.
+         */
+        post: operations["resolve_api_reviews_resolutions_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1997,10 +2377,377 @@ export interface components {
              */
             base_currency: string;
         };
+        /**
+         * BillScheduleCreate
+         * @description A bill the calendar should know about.
+         */
+        BillScheduleCreate: {
+            /**
+             * Amount
+             * @description Empty = it varies
+             */
+            amount?: number | null;
+            /**
+             * Currency
+             * @description Empty = the base currency
+             */
+            currency?: string | null;
+            /**
+             * Direction
+             * @description in | out
+             * @default out
+             */
+            direction?: string;
+            /**
+             * Due Day
+             * @description Day of the month, clamped to a short one
+             */
+            due_day?: number | null;
+            /**
+             * Due Last Workday
+             * @description China's last working day of the month
+             * @default false
+             */
+            due_last_workday?: boolean;
+            /** End Date */
+            end_date?: string | null;
+            /**
+             * Institution Id
+             * @description The account it draws on / lands in
+             */
+            institution_id?: number | null;
+            /**
+             * Kind
+             * @description credit_card | installment | insurance | tuition | rent | mortgage | salary | custom
+             */
+            kind?: string | null;
+            /** Member Id */
+            member_id?: number | null;
+            /**
+             * Months
+             * @description The bill's own months (1–12); empty = every month
+             */
+            months?: number[] | null;
+            /** Name */
+            name: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * Remind Days
+             * @default 3
+             */
+            remind_days?: number;
+            /** Start Date */
+            start_date?: string | null;
+        };
+        /** BillScheduleRead */
+        BillScheduleRead: {
+            /**
+             * Amount
+             * @description Empty = it varies
+             */
+            amount: number | null;
+            /** Created At */
+            created_at: string;
+            /**
+             * Currency
+             * @description Empty = the base currency
+             */
+            currency: string | null;
+            /**
+             * Direction
+             * @description in | out
+             * @default out
+             */
+            direction: string;
+            /**
+             * Due Day
+             * @description Day of the month, clamped to a short one
+             */
+            due_day: number | null;
+            /**
+             * Due Last Workday
+             * @description China's last working day of the month
+             * @default false
+             */
+            due_last_workday: boolean;
+            /** End Date */
+            end_date: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Institution Id
+             * @description The account it draws on / lands in
+             */
+            institution_id: number | null;
+            /**
+             * Kind
+             * @description credit_card | installment | insurance | tuition | rent | mortgage | salary | custom
+             */
+            kind: string | null;
+            /** Member Id */
+            member_id: number | null;
+            /**
+             * Months
+             * @description The bill's own months (1–12); empty = every month
+             */
+            months: number[] | null;
+            /** Name */
+            name: string;
+            /** Note */
+            note: string | null;
+            /**
+             * Remind Days
+             * @default 3
+             */
+            remind_days: number;
+            /** Start Date */
+            start_date: string | null;
+        };
+        /**
+         * BillScheduleUpdate
+         * @description An edit of a bill's habits. Its name, kind and account follow it.
+         */
+        BillScheduleUpdate: {
+            /** Amount */
+            amount?: number | null;
+            /** Currency */
+            currency?: string | null;
+            /** Direction */
+            direction?: string | null;
+            /** Due Day */
+            due_day?: number | null;
+            /** Due Last Workday */
+            due_last_workday?: boolean | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Institution Id */
+            institution_id?: number | null;
+            /** Kind */
+            kind?: string | null;
+            /** Member Id */
+            member_id?: number | null;
+            /** Months */
+            months?: number[] | null;
+            /** Name */
+            name?: string | null;
+            /** Note */
+            note?: string | null;
+            /** Remind Days */
+            remind_days?: number | null;
+            /** Start Date */
+            start_date?: string | null;
+        };
         /** Body_preview_import_api_imports_preview_post */
         Body_preview_import_api_imports_preview_post: {
             /** File */
             file: string;
+        };
+        /**
+         * BudgetCreate
+         * @description A budget line, or a new line superseding an older one from its month.
+         */
+        BudgetCreate: {
+            /**
+             * Amount
+             * @description The limit, in the base currency
+             */
+            amount: number;
+            /**
+             * Category
+             * @description Taxonomy code; null = 总预算
+             */
+            category?: string | null;
+            /**
+             * Repeat
+             * @description True: every month from `year_month` on; false: that month only
+             * @default true
+             */
+            repeat?: boolean;
+            /**
+             * Rollover
+             * @description Carry the unused part into the next month
+             * @default false
+             */
+            rollover?: boolean;
+            /**
+             * Year Month
+             * @description The month it applies from (YYYY-MM)
+             */
+            year_month: string;
+        };
+        /** BudgetOverview */
+        BudgetOverview: {
+            /**
+             * Base Currency
+             * @description The currency this payload's computed amounts are in — the database's base, as the figures were converted. Figures a row states itself (an anchor, a transaction, a valuation) keep their own `currency`.
+             */
+            base_currency: string;
+            /** Days Left */
+            days_left: number;
+            /** Month */
+            month: string;
+            /** Slices */
+            slices: components["schemas"]["BudgetSlice"][];
+            /**
+             * Total Budget
+             * @description The household ceiling if one is set, else the sum of the lines
+             */
+            total_budget: number;
+            /** Total Spent */
+            total_spent: number;
+        };
+        /** BudgetRead */
+        BudgetRead: {
+            /**
+             * Amount
+             * @description The limit, in the base currency
+             */
+            amount: number;
+            /**
+             * Category
+             * @description Taxonomy code; null = 总预算
+             */
+            category: string | null;
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /**
+             * Repeat
+             * @description True: every month from `year_month` on; false: that month only
+             * @default true
+             */
+            repeat: boolean;
+            /**
+             * Rollover
+             * @description Carry the unused part into the next month
+             * @default false
+             */
+            rollover: boolean;
+            /**
+             * Year Month
+             * @description The month it applies from (YYYY-MM)
+             */
+            year_month: string;
+        };
+        /**
+         * BudgetSlice
+         * @description One line of the overview: what it may reach, what it has reached.
+         */
+        BudgetSlice: {
+            /**
+             * Budget
+             * @description In force, including any carried-over surplus
+             */
+            budget: number;
+            /**
+             * Carried
+             * @description What rollover brought in
+             */
+            carried: number;
+            /** Category */
+            category: string | null;
+            /**
+             * Daily
+             * @description remaining / days_left — 'this month you may still spend 182 a day'
+             */
+            daily: number | null;
+            /** Days Left */
+            days_left: number;
+            /**
+             * Id
+             * @description The line in force — what an edit edits
+             */
+            id: number;
+            /**
+             * Ratio
+             * @description spent / budget
+             */
+            ratio: number;
+            /** Remaining */
+            remaining: number;
+            /** Repeat */
+            repeat: boolean;
+            /** Rollover */
+            rollover: boolean;
+            /** Spent */
+            spent: number;
+            /**
+             * Stated
+             * @description The line's own amount
+             */
+            stated: number;
+        };
+        /**
+         * BudgetUpdate
+         * @description An edit of a line's size and habits. Its month and category are the
+         *     line's identity — changing one is a new line, not an edit.
+         */
+        BudgetUpdate: {
+            /** Amount */
+            amount?: number | null;
+            /** Repeat */
+            repeat?: boolean | null;
+            /** Rollover */
+            rollover?: boolean | null;
+        };
+        /**
+         * CalendarMovement
+         * @description One expected movement on one day. `source` names the voice that said
+         *     it (flow | bill | entry | transfer | pac); `stated` false means the sum
+         *     is not known (a card's bill) and counts as nothing in every total.
+         */
+        CalendarMovement: {
+            /** Amount */
+            amount: number | null;
+            /** Base Amount */
+            base_amount: number | null;
+            /** Category */
+            category: string | null;
+            /** Date */
+            date: string;
+            /** Direction */
+            direction: string;
+            /** Institution Id */
+            institution_id: number | null;
+            /** Institution Name */
+            institution_name: string | null;
+            /** Name */
+            name: string;
+            /** Source */
+            source: string;
+            /** Stated */
+            stated: boolean;
+        };
+        /**
+         * CalendarPage
+         * @description The month's expected movements, by day.
+         */
+        CalendarPage: {
+            /**
+             * Base Currency
+             * @description The currency this payload's computed amounts are in — the database's base, as the figures were converted. Figures a row states itself (an anchor, a transaction, a valuation) keep their own `currency`.
+             */
+            base_currency: string;
+            /**
+             * Calendar Covers
+             * @description What the workday table knows
+             */
+            calendar_covers: {
+                [key: string]: unknown;
+            };
+            /** Days */
+            days: {
+                [key: string]: components["schemas"]["CalendarMovement"][];
+            };
+            /** Month */
+            month: string;
+            /**
+             * Unpriced
+             * @description Movements whose sum is not known
+             */
+            unpriced: number;
         };
         /**
          * CashAnchorCreate
@@ -2112,6 +2859,11 @@ export interface components {
              */
             institution_id?: number | null;
             /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id?: number | null;
+            /**
              * Note
              * @description Free-form notes
              */
@@ -2180,6 +2932,11 @@ export interface components {
             /** Linked Transfer Id */
             linked_transfer_id: number | null;
             /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id: number | null;
+            /**
              * Note
              * @description Free-form notes
              */
@@ -2198,6 +2955,8 @@ export interface components {
             channel?: string | null;
             /** Counterparty */
             counterparty?: string | null;
+            /** Member Id */
+            member_id?: number | null;
             /** Note */
             note?: string | null;
         };
@@ -2215,6 +2974,11 @@ export interface components {
              * @description The currency this payload's computed amounts are in — the database's base, as the figures were converted. Figures a row states itself (an anchor, a transaction, a valuation) keep their own `currency`.
              */
             base_currency: string;
+            /**
+             * By Member
+             * @description The same run-rate split by whose flows they are, shared (共同) in the null slice. Slices sum to the monthly figures above.
+             */
+            by_member: components["schemas"]["MemberFlowSlice"][];
             /** Discretionary Expenses */
             discretionary_expenses: number;
             /**
@@ -2257,6 +3021,35 @@ export interface components {
              * @description Flows with no start date, counted as in force: nothing says they have not started
              */
             undated: number;
+        };
+        /**
+         * CashForecast
+         * @description The balances the coming days hold. `from_` is the horizon's first
+         *     day: the engine speaks "from", a field name cannot, and the alias carries
+         *     it across.
+         */
+        CashForecast: {
+            /** Accounts */
+            accounts: components["schemas"]["ForecastAccount"][];
+            /**
+             * Base Currency
+             * @description The currency this payload's computed amounts are in — the database's base, as the figures were converted. Figures a row states itself (an anchor, a transaction, a valuation) keep their own `currency`.
+             */
+            base_currency: string;
+            /** Calendar Covers */
+            calendar_covers: {
+                [key: string]: unknown;
+            };
+            /** From */
+            from: string;
+            /** Gaps */
+            gaps: components["schemas"]["ForecastGap"][];
+            /** Horizon Days */
+            horizon_days: number;
+            /** To */
+            to: string;
+            /** Unpriced */
+            unpriced: number;
         };
         /**
          * CashPosition
@@ -2364,6 +3157,13 @@ export interface components {
             occurrence: string | null;
             /** Reason */
             reason: string;
+        };
+        /** CategoryAmount */
+        CategoryAmount: {
+            /** Amount */
+            amount: number;
+            /** Category */
+            category: string | null;
         };
         /**
          * ChainRunRead
@@ -3240,6 +4040,19 @@ export interface components {
             weight_pct: number;
         };
         /**
+         * CoverOption
+         * @description An account that could cover a gap. A suggestion to move money — the
+         *     app never moves any.
+         */
+        CoverOption: {
+            /** Institution Id */
+            institution_id: number;
+            /** Institution Name */
+            institution_name: string | null;
+            /** Surplus */
+            surplus: number;
+        };
+        /**
          * DashboardAllocation
          * @description Top-level financial-vs-real split, with per-class / per-category detail.
          */
@@ -3274,6 +4087,11 @@ export interface components {
              * @description The currency this payload's computed amounts are in — the database's base, as the figures were converted. Figures a row states itself (an anchor, a transaction, a valuation) keep their own `currency`.
              */
             base_currency: string;
+            /**
+             * By Member
+             * @description The same net worth split by whose it is, shared rows (共同) in the null slice. Slices sum to `net_worth`; nothing is counted twice.
+             */
+            by_member: components["schemas"]["MemberWorthSlice"][];
             /** Cash Total */
             cash_total: number;
             /**
@@ -3319,6 +4137,34 @@ export interface components {
              * @description Value that left the totals because a newer photograph did not mention it. Selling is an assertion with a date and proceeds; forgetting is the absence of one, and the app must not let the difference pass in silence.
              */
             unresolved_omissions: components["schemas"]["OmittedPosition"][];
+        };
+        /** DecisionCreate */
+        DecisionCreate: {
+            /**
+             * Kind
+             * @description prepay_mortgage | ...
+             */
+            kind: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+        };
+        /** DecisionRead */
+        DecisionRead: {
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @description prepay_mortgage | ...
+             */
+            kind: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
         };
         /**
          * DeletionRead
@@ -3394,6 +4240,11 @@ export interface components {
              */
             institution_id?: number | null;
             /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id?: number | null;
+            /**
              * Name
              * @description Expense name (e.g. 'Rent', 'Groceries')
              */
@@ -3454,6 +4305,11 @@ export interface components {
              */
             institution_id: number | null;
             /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id: number | null;
+            /**
              * Name
              * @description Expense name (e.g. 'Rent', 'Groceries')
              */
@@ -3497,6 +4353,54 @@ export interface components {
             /** Start Date */
             start_date: string | null;
         };
+        /** ForecastAccount */
+        ForecastAccount: {
+            /** Institution Id */
+            institution_id: number;
+            /** Institution Name */
+            institution_name: string | null;
+            /** Points */
+            points: components["schemas"]["ForecastPoint"][];
+            /** Start Balance */
+            start_balance: number;
+        };
+        /**
+         * ForecastGap
+         * @description A SPELL below zero: the day it starts, how long it lasts, its deepest
+         *     deficit and what walked it there.
+         */
+        ForecastGap: {
+            /**
+             * Causes
+             * @description The movements that walked it down
+             */
+            causes: components["schemas"]["CalendarMovement"][];
+            /** Cover */
+            cover: components["schemas"]["CoverOption"][];
+            /** Date */
+            date: string;
+            /**
+             * Days
+             * @description How long the thin stretch lasts
+             * @default 1
+             */
+            days: number;
+            /** Deficit */
+            deficit: number;
+            /** Institution Id */
+            institution_id: number;
+            /** Institution Name */
+            institution_name: string | null;
+        };
+        /** ForecastPoint */
+        ForecastPoint: {
+            /** Balance */
+            balance: number;
+            /** Date */
+            date: string;
+            /** Net */
+            net: number;
+        };
         /**
          * FxRateRead
          * @description One reference rate: units of `currency` per 1 `base` on `as_of`.
@@ -3525,6 +4429,11 @@ export interface components {
             currency: string;
             /** Current Amount */
             current_amount?: number | null;
+            /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id?: number | null;
             /** Monthly Contribution */
             monthly_contribution?: number | null;
             /** Name */
@@ -3554,6 +4463,11 @@ export interface components {
             current_amount: number | null;
             /** Id */
             id: number;
+            /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id: number | null;
             /** Monthly Contribution */
             monthly_contribution: number | null;
             /** Name */
@@ -3879,6 +4793,11 @@ export interface components {
              */
             kind?: string | null;
             /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id?: number | null;
+            /**
              * Name
              * @description Income source name (e.g. 'Salary', 'Apartment rent')
              */
@@ -3939,6 +4858,11 @@ export interface components {
              */
             kind: string | null;
             /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id: number | null;
+            /**
              * Name
              * @description Income source name (e.g. 'Salary', 'Apartment rent')
              */
@@ -3959,6 +4883,11 @@ export interface components {
          * @description Payload to create an institution (POST).
          */
         InstitutionCreate: {
+            /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id?: number | null;
             /**
              * Name
              * @description Institution name
@@ -3986,6 +4915,11 @@ export interface components {
             id: number;
             /** Latest Snapshot */
             latest_snapshot: string | null;
+            /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id: number | null;
             /**
              * Name
              * @description Institution name
@@ -4087,6 +5021,15 @@ export interface components {
              */
             state: "ready" | "downloading" | "failed" | "not_started";
         };
+        /** InterestYear */
+        InterestYear: {
+            /** Due */
+            due: number;
+            /** Paid */
+            paid: number;
+            /** Year */
+            year: number;
+        };
         /**
          * IsinSuggestion
          * @description A best-effort ISIN -> ticker suggestion from OpenFIGI.
@@ -4162,6 +5105,13 @@ export interface components {
              */
             currency: string;
             /**
+             * Installment Plan
+             * @description The instalment a fee is quoted on: count, per_period, principal, fee_rate
+             */
+            installment_plan?: {
+                [key: string]: unknown;
+            } | null;
+            /**
              * Interest Rate
              * @description Annual interest rate in % (e.g. 3.2)
              */
@@ -4171,6 +5121,11 @@ export interface components {
              * @description Debt kind
              */
             kind?: string | null;
+            /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id?: number | null;
             /**
              * Name
              * @description Debt name (e.g. 'Home mortgage')
@@ -4186,6 +5141,13 @@ export interface components {
              * @description Real asset this debt finances (mortgage -> house)
              */
             real_asset_id?: number | null;
+            /**
+             * Terms
+             * @description The loan's plan (PRD v3 §4.4): combined-loan parts with their principal, rate, method, term and paid periods. Empty = tracked by its dated balances alone.
+             */
+            terms?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * LiabilityRead
@@ -4202,6 +5164,13 @@ export interface components {
             /** Id */
             id: number;
             /**
+             * Installment Plan
+             * @description The instalment a fee is quoted on: count, per_period, principal, fee_rate
+             */
+            installment_plan: {
+                [key: string]: unknown;
+            } | null;
+            /**
              * Interest Rate
              * @description Annual interest rate in % (e.g. 3.2)
              */
@@ -4213,6 +5182,11 @@ export interface components {
             kind: string | null;
             /** Latest Balance */
             latest_balance: number | null;
+            /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id: number | null;
             /**
              * Name
              * @description Debt name (e.g. 'Home mortgage')
@@ -4228,6 +5202,57 @@ export interface components {
              * @description Real asset this debt finances (mortgage -> house)
              */
             real_asset_id: number | null;
+            /**
+             * Terms
+             * @description The loan's plan (PRD v3 §4.4): combined-loan parts with their principal, rate, method, term and paid periods. Empty = tracked by its dated balances alone.
+             */
+            terms: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * LoanPlanRead
+         * @description The plan beside the reader's own balances.
+         *
+         *     `difference` is the anchor's verdict on the plan: what the bank's
+         *     recorded balance is against what the plan says is left. It is usually a
+         *     prepayment, and the page says so rather than leaving the gap unspoken.
+         */
+        LoanPlanRead: {
+            /**
+             * Base Currency
+             * @description The currency this payload's computed amounts are in — the database's base, as the figures were converted. Figures a row states itself (an anchor, a transaction, a valuation) keep their own `currency`.
+             */
+            base_currency: string;
+            /** Currency */
+            currency: string;
+            /** Difference */
+            difference: number | null;
+            /**
+             * Installment
+             * @description The instalment plan with BOTH rates named: the fee arithmetic ('名义费率') and the IRR of its flows ('实际年化'). A fee is charged on the original sum while the principal is paid down every period — the gap between the two is the point.
+             */
+            installment: {
+                [key: string]: unknown;
+            } | null;
+            /** Interest By Year */
+            interest_by_year: components["schemas"]["InterestYear"][];
+            /** Liability Id */
+            liability_id: number;
+            /** Monthly Payment */
+            monthly_payment: number;
+            /** Name */
+            name: string;
+            /** Parts */
+            parts: {
+                [key: string]: unknown;
+            }[];
+            /** Plan Remaining */
+            plan_remaining: number;
+            /** Schedule */
+            schedule: components["schemas"]["PaymentRow"][];
+            /** Stated Balance */
+            stated_balance: number | null;
         };
         /**
          * MatrixCell
@@ -4241,6 +5266,208 @@ export interface components {
             pct: number;
             /** Region */
             region: string;
+        };
+        /**
+         * MemberAssign
+         * @description Who an account is, for the batch-assign route. Null marks it shared
+         *     (共同) and names no rows.
+         */
+        MemberAssign: {
+            /**
+             * Member Id
+             * @description The member; null = shared
+             */
+            member_id?: number | null;
+        };
+        /**
+         * MemberAssignResult
+         * @description What one batch-assign stamped: the account, whose it now is, and how
+         *     many rows carry the attribution — said so the reader can see the tool
+         *     reached the history and not only the account's name.
+         */
+        MemberAssignResult: {
+            /** Institution Id */
+            institution_id: number;
+            /** Member Id */
+            member_id: number | null;
+            /**
+             * Stamped
+             * @description Rows whose attribution now says this member
+             */
+            stamped: number;
+        };
+        /**
+         * MemberCreate
+         * @description Payload to add a member of the household.
+         */
+        MemberCreate: {
+            /**
+             * Name
+             * @description How this person is called here
+             */
+            name: string;
+            /**
+             * Role
+             * @description self | spouse | child | parent | other (display only)
+             */
+            role?: string | null;
+        };
+        /**
+         * MemberFlowSlice
+         * @description One member's share of the monthly run-rate: the recurring income and
+         *     expenses attributed to them. Sums plus the shared slice equal the summary's
+         *     `monthly_income`/`monthly_expenses` by construction.
+         */
+        MemberFlowSlice: {
+            /**
+             * Member Id
+             * @description Null is the shared slice (共同)
+             */
+            member_id: number | null;
+            /** Monthly Expenses */
+            monthly_expenses: number;
+            /** Monthly Income */
+            monthly_income: number;
+            /** Name */
+            name: string | null;
+        };
+        /**
+         * MemberRead
+         * @description A member as the API returns it.
+         */
+        MemberRead: {
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /**
+             * Name
+             * @description How this person is called here
+             */
+            name: string;
+            /**
+             * Role
+             * @description self | spouse | child | parent | other (display only)
+             */
+            role: string | null;
+        };
+        /**
+         * MemberUpdate
+         * @description Payload to rename a member or change how it is described. Its rows move
+         *     only through the batch-assign route: an edit of the person is not an edit
+         *     of everything they have ever paid for.
+         */
+        MemberUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Role */
+            role?: string | null;
+        };
+        /**
+         * MemberWorthSlice
+         * @description One member's share of the household net worth: their accounts' cash and
+         *     positions, their real assets, less their debts. The slices plus the shared
+         *     one (`member_id` null) sum exactly to `net_worth` — one walk, one set of
+         *     conversions, so the parts cannot drift from the whole.
+         */
+        MemberWorthSlice: {
+            /**
+             * Member Id
+             * @description Null is the shared slice (共同)
+             */
+            member_id: number | null;
+            /** Name */
+            name: string | null;
+            /** Net Worth */
+            net_worth: number;
+            /** Role */
+            role: string | null;
+        };
+        /**
+         * MonthActuals
+         * @description What actually moved in a month. The two voices of the cash register,
+         *     each payment once: entries where an entry carried it, recurring flows
+         *     where none did.
+         */
+        MonthActuals: {
+            /**
+             * Base Currency
+             * @description The currency this payload's computed amounts are in — the database's base, as the figures were converted. Figures a row states itself (an anchor, a transaction, a valuation) keep their own `currency`.
+             */
+            base_currency: string;
+            /** Days With Entries */
+            days_with_entries: number;
+            /** Earned By Category */
+            earned_by_category: components["schemas"]["CategoryAmount"][];
+            /** Entry Count */
+            entry_count: number;
+            /**
+             * Fixed Total
+             * @description The recurring lane's uncovered payments
+             */
+            fixed_total: number;
+            /**
+             * Flexible Total
+             * @description The entries' share of the spending
+             */
+            flexible_total: number;
+            /** Income Total */
+            income_total: number;
+            /** Month */
+            month: string;
+            /** Spent By Category */
+            spent_by_category: components["schemas"]["CategoryAmount"][];
+            /** Spent Total */
+            spent_total: number;
+        };
+        /**
+         * MonthReviewRead
+         * @description Everything worth saying about a month — computed from the rows each
+         *     time it is read, so it can never disagree with them.
+         */
+        MonthReviewRead: {
+            /**
+             * Base Currency
+             * @description The currency this payload's computed amounts are in — the database's base, as the figures were converted. Figures a row states itself (an anchor, a transaction, a valuation) keep their own `currency`.
+             */
+            base_currency: string;
+            budget: components["schemas"]["BudgetOverview"];
+            /** Days With Entries */
+            days_with_entries: number;
+            /** Entry Count */
+            entry_count: number;
+            /** Expenses */
+            expenses: number;
+            /** Fixed Total */
+            fixed_total: number;
+            /** Flexible Total */
+            flexible_total: number;
+            /** Income */
+            income: number;
+            /** Month */
+            month: string;
+            /** Movers */
+            movers: components["schemas"]["ReviewMover"][];
+            /** Net Worth */
+            net_worth: number;
+            /** Prev Expenses */
+            prev_expenses: number;
+            /** Prev Income */
+            prev_income: number;
+            /** Prev Month */
+            prev_month: string;
+            /** Prev Net Worth */
+            prev_net_worth: number;
+            /** Resolved */
+            resolved: {
+                [key: string]: string;
+            };
+            /** Savings Rate */
+            savings_rate: number | null;
+            /** Suggestions */
+            suggestions: components["schemas"]["ReviewSuggestion"][];
+            /** Uncategorized */
+            uncategorized: number;
         };
         /**
          * NetWorthPoint
@@ -4309,6 +5536,23 @@ export interface components {
             name: string;
             /** Pct */
             pct: number;
+        };
+        /**
+         * PaymentRow
+         * @description One month of a loan's plan, as the schedule table prints it: every
+         *     part's payments of that month, summed.
+         */
+        PaymentRow: {
+            /** Date */
+            date: string;
+            /** Interest */
+            interest: number;
+            /** Payment */
+            payment: number;
+            /** Principal */
+            principal: number;
+            /** Remaining */
+            remaining: number;
         };
         /**
          * PlanTargetRead
@@ -4678,6 +5922,66 @@ export interface components {
              */
             value_base: number;
         };
+        /** PrepayComparison */
+        PrepayComparison: {
+            /**
+             * Base Currency
+             * @description The currency this payload's computed amounts are in — the database's base, as the figures were converted. Figures a row states itself (an anchor, a transaction, a valuation) keep their own `currency`.
+             */
+            base_currency: string;
+            /** Liability Id */
+            liability_id: number;
+            /** Options */
+            options: components["schemas"]["PrepayOption"][];
+        };
+        /** PrepayOption */
+        PrepayOption: {
+            /** Amount */
+            amount: number;
+            /** Expected Return */
+            expected_return: number;
+            /** Invested Range */
+            invested_range: number[];
+            /** Invested Value */
+            invested_value: number;
+            /** Mode */
+            mode: string;
+            /** Months Saved */
+            months_saved: number;
+            /** New Payment */
+            new_payment: number;
+            /** Old Payment */
+            old_payment: number;
+            /** Saved Interest */
+            saved_interest: number;
+            /** Volatility */
+            volatility: number;
+        };
+        /**
+         * PrepayRequest
+         * @description What paying early is weighed against.
+         */
+        PrepayRequest: {
+            /** Amount */
+            amount: number;
+            /**
+             * Expected Return
+             * @description What the money would earn invested
+             * @default 0.05
+             */
+            expected_return?: number;
+            /**
+             * Mode
+             * @description shorten | reduce — empty compares BOTH, as the decision card does
+             */
+            mode?: string | null;
+            /**
+             * Volatility
+             * @description The width of that projection's range
+             * @default 0.15
+             */
+            volatility?: number;
+        };
         /**
          * PriceQuote
          * @description A market price for a symbol (the latest available close).
@@ -4753,6 +6057,11 @@ export interface components {
              */
             currency: string;
             /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id?: number | null;
+            /**
              * Name
              * @description Asset name (e.g. 'Milan flat', 'Tesla Model 3')
              */
@@ -4792,6 +6101,11 @@ export interface components {
             currency: string;
             /** Id */
             id: number;
+            /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id: number | null;
             /**
              * Name
              * @description Asset name (e.g. 'Milan flat', 'Tesla Model 3')
@@ -4897,6 +6211,72 @@ export interface components {
             required_annual_return: number | null;
             /** Years */
             years: number;
+        };
+        /**
+         * ReviewMover
+         * @description A category whose spending moved most, with the rows that moved it.
+         *
+         *     `entry_ids` are the very rows behind the sentence: an attribution and its
+         *     evidence are shown together, never one without the other.
+         */
+        ReviewMover: {
+            /** Category */
+            category: string | null;
+            /** Delta */
+            delta: number;
+            /** Entry Ids */
+            entry_ids: number[];
+            /** Prev Spent */
+            prev_spent: number;
+            /** Reason Count */
+            reason_count: number;
+            /** Reason Counterparty */
+            reason_counterparty: string | null;
+            /** Spent */
+            spent: number;
+        };
+        /**
+         * ReviewResolution
+         * @description What the reader did with one suggestion. `accepted` with an `amount`
+         *     writes that amount into the category's budget from next month.
+         */
+        ReviewResolution: {
+            /**
+             * Action
+             * @description accepted | ignored
+             */
+            action: string;
+            /** Amount */
+            amount?: number | null;
+            /** Key */
+            key: string;
+            /** Year Month */
+            year_month: string;
+        };
+        /**
+         * ReviewSuggestion
+         * @description One line the reader may take or dismiss. The WORDS are composed by the
+         *     page in its own language; this is only the fact and the number.
+         */
+        ReviewSuggestion: {
+            /** Category */
+            category: string | null;
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @description raise | lower | categorize
+             */
+            kind: string;
+            /** Month */
+            month: string;
+            /** Proposed Amount */
+            proposed_amount: number | null;
+            /**
+             * Resolution
+             * @description accepted | ignored once the reader decided
+             */
+            resolution: string | null;
         };
         /**
          * SnapshotCreate
@@ -5322,6 +6702,11 @@ export interface components {
              */
             kind: string;
             /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id: number | null;
+            /**
              * Note
              * @description Free-form notes
              */
@@ -5439,6 +6824,11 @@ export interface components {
              */
             kind?: string;
             /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id?: number | null;
+            /**
              * Note
              * @description Free-form notes
              */
@@ -5492,6 +6882,11 @@ export interface components {
              * @description Source institution id
              */
             from_institution_id?: number | null;
+            /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id?: number | null;
             /**
              * Note
              * @description Free-form notes
@@ -5567,6 +6962,11 @@ export interface components {
             /** Id */
             id: number;
             /**
+             * Member Id
+             * @description Whose this is; null = 共同 (shared, the household's)
+             */
+            member_id: number | null;
+            /**
              * Note
              * @description Free-form notes
              */
@@ -5614,6 +7014,38 @@ export interface components {
              * @description The code as the row states it, or null for a row with none
              */
             currency: string | null;
+        };
+        /**
+         * UpcomingBill
+         * @description A movement due soon, with whether the account holds enough for it.
+         */
+        UpcomingBill: {
+            /** Amount */
+            amount: number | null;
+            /** Balance Today */
+            balance_today: number;
+            /** Base Amount */
+            base_amount: number | null;
+            /** Category */
+            category: string | null;
+            /** Date */
+            date: string;
+            /** Days Until */
+            days_until: number;
+            /** Direction */
+            direction: string;
+            /** Enough */
+            enough: boolean;
+            /** Institution Id */
+            institution_id: number | null;
+            /** Institution Name */
+            institution_name: string | null;
+            /** Name */
+            name: string;
+            /** Source */
+            source: string;
+            /** Stated */
+            stated: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -5863,6 +7295,334 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChainRunRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_bills_api_bills_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillScheduleRead"][];
+                };
+            };
+        };
+    };
+    create_bill_api_bills_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillScheduleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillScheduleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_bill_api_bills__bill_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bill_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_bill_api_bills__bill_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bill_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillScheduleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillScheduleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upcoming_api_bills_upcoming_get: {
+        parameters: {
+            query?: {
+                within?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpcomingBill"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_budgets_api_budgets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetRead"][];
+                };
+            };
+        };
+    };
+    create_budget_api_budgets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BudgetCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_budget_api_budgets__budget_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                budget_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_budget_api_budgets__budget_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                budget_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BudgetUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    overview_api_budgets_overview_get: {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM; default the current month */
+                month?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    calendar_api_calendar_get: {
+        parameters: {
+            query?: {
+                month?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarPage"];
                 };
             };
             /** @description Validation Error */
@@ -6496,6 +8256,59 @@ export interface operations {
             };
         };
     };
+    list_decisions_api_decisions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionRead"][];
+                };
+            };
+        };
+    };
+    create_decision_api_decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_items_api_expenses_get: {
         parameters: {
             query?: never;
@@ -6632,6 +8445,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forecast_api_forecast_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashForecast"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -7387,6 +9231,41 @@ export interface operations {
             };
         };
     };
+    assign_institution_api_institutions__institution_id__assign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemberAssign"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberAssignResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_cash_position_api_institutions__institution_id__cash_get: {
         parameters: {
             query?: {
@@ -7927,6 +9806,72 @@ export interface operations {
             };
         };
     };
+    loan_plan_api_liabilities__liability_id__plan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                liability_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoanPlanRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepay_api_liabilities__liability_id__prepay_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                liability_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrepayRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrepayComparison"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_balance_api_liability_balances__balance_id__put: {
         parameters: {
             query?: never;
@@ -7979,6 +9924,155 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_members_api_members_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberRead"][];
+                };
+            };
+        };
+    };
+    create_member_api_members_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemberCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_member_api_members__member_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_member_api_members__member_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                member_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemberUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    actuals_api_months_actuals_get: {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM; default the current month */
+                month?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthActuals"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -8406,6 +10500,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RealAssetValuationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_api_reviews_get: {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM; default the current month */
+                month?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthReviewRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_api_reviews_resolutions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewResolution"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
             /** @description Validation Error */

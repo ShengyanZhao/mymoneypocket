@@ -38,6 +38,14 @@ export const profileEn = {
   "profile.baseOnlyOne":
     "The rate feed has not answered yet, so {current} is the only currency on offer.",
 
+  // --- 涨跌配色: which way the market colours point -------------------------
+  "profile.gainsTitle": "Gain/loss colours",
+  "profile.gainsHelp":
+    "Only the colours of gains and losses move with this: the P/L column, the net worth change. Status colours never move — a refusal is red and a success is green in both settings.",
+  "profile.gainsCn": "Red up, green down",
+  "profile.gainsWest": "Green up, red down",
+  "profile.gainsNote": "Applies as soon as you press it; nothing needs saving.",
+
   // --- tax -----------------------------------------------------------------
   "profile.taxTitle": "Tax",
   "profile.taxHelp":

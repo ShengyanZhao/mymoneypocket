@@ -58,7 +58,7 @@ export function Mark({
 export function EmptyState({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-1.5 py-12 text-center">
-      <Mark size={68} className="mb-1 text-olive opacity-40" />
+      <Mark size={68} className="mb-1 text-brand opacity-40" />
       <p className="font-display text-xl leading-tight text-ink">{title}</p>
       <p className="max-w-[48ch] text-sm text-ink-soft">{children}</p>
     </div>

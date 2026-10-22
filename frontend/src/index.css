@@ -2,29 +2,13 @@
 
 /* ============================================================
    Typefaces — self-hosted: the app runs locally, so it must not
-   depend on a font CDN at runtime. Two subsets per family (latin +
-   latin-ext) so international names render correctly. 97 kB total.
+   depend on a font CDN at runtime. Archivo covers latin + latin-ext
+   (97 kB); CJK glyphs fall through to the fonts each system already
+   has, which costs no download. To ship a bundled CJK face (MiSans /
+   Noto Sans SC subset), drop the woff2 files in public/fonts and add
+   an @font-face here FIRST in the stacks below — the fallbacks are
+   already in the right order for it.
    ============================================================ */
-@font-face {
-  font-family: "Instrument Serif";
-  src: url("/fonts/instrument-serif-latin.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
-    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
-    U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: "Instrument Serif";
-  src: url("/fonts/instrument-serif-latin-ext.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
-    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
-    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
 @font-face {
   font-family: "Archivo";
   src: url("/fonts/archivo-latin.woff2") format("woff2");
@@ -47,74 +31,118 @@
 }
 
 /* ============================================================
-   Design tokens — direction "Editoriale" (warm bone ground, olive
-   accent, high-contrast serif display) with the ruled-ledger table
-   treatment for dense views. Change a value here and the whole app
-   follows: no colour literals live in the components.
+   Design tokens — direction "Clean-Ledger CN": cool light-grey
+   ground, white cards, one brand blue, and the Chinese market
+   convention for gains and losses (RED up, GREEN down) as the
+   default. Change a value here and the whole app follows: no
+   colour literals live in the components.
 
-   Contrast against the bone ground is verified for every text token:
-   ink 18.4:1 · ink-soft 5.1:1 · ink-faint 4.7:1 · olive 6.0:1 ·
-   up 6.3:1 · down 5.7:1 · warn 4.7:1 (all pass WCAG AA).
+   Contrast against the ground #f5f6f8 is verified for every text
+   token: ink 14.6:1 · ink-soft 6.2:1 · ink-faint 4.6:1 ·
+   brand 5.3:1 · up 4.5:1 · down 5.0:1 · warn 4.6:1 (all pass
+   WCAG AA for body text).
+
+   TWO semantic groups, kept apart on purpose:
+   - `up`/`down` are MARKET DIRECTION only (P/L, valuation change).
+     They flip with the reader's 涨跌配色 preference, below.
+   - `good`/`bad`/`warn` are STATUS (healthy, refused, destructive)
+     and never flip: a refusal is red and a success is green
+     whatever the exchange floor does.
    ============================================================ */
 /* `static` matters: Tailwind v4 tree-shakes theme variables that no utility
    class references, and several of these are consumed as `var(--color-…)`
    from the chart components (SVG stroke/fill). Without `static` those
    variables silently vanish from the build and the marks lose their colour. */
 @theme static {
-  /* Latin first, CJK after: Archivo and Instrument Serif are self-hosted in
-     latin + latin-ext subsets only, so a Chinese word has nothing to draw it
-     and falls through. The fallbacks are the fonts each system already has —
-     PingFang on macOS, YaHei on Windows, Noto where Linux installed it — so
-     this costs no download and the app still runs with no network. The serif
-     stack is there because `font-display` headings would otherwise be serif in
-     English and sans in Chinese, and a heading is the one place where two
-     typefaces side by side reads as a mistake rather than as variety. */
-  --font-sans: "Archivo", system-ui, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
-    "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", sans-serif;
-  --font-display: "Instrument Serif", Georgia, "Times New Roman", "Songti SC", "SimSun",
-    "Noto Serif SC", "Noto Serif CJK SC", serif;
+  /* CJK first: these are the fonts a Chinese reader's machine already has
+     (PingFang on iOS/macOS, YaHei on Windows, Noto on Linux), so no download
+     and no Songti fallback — the old serif stack landed Chinese headings in
+     a newspaper face beside Latin ones in a book face. Archivo picks up the
+     latin glyphs the CJK fonts handle poorly. */
+  --font-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC",
+    "Noto Sans CJK SC", "Archivo", system-ui, sans-serif;
+  --font-display: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC",
+    "Noto Sans CJK SC", "Archivo", system-ui, sans-serif;
 
   /* grounds */
-  --color-ground: #faf8f3; /* page */
-  --color-surface: #fffdf9; /* panels, inputs */
-  --color-tint: #f3f0e7; /* alternating ledger rows, quiet fills */
+  --color-ground: #f5f6f8; /* page */
+  --color-surface: #ffffff; /* cards, inputs */
+  --color-tint: #f0f2f5; /* alternating ledger rows, quiet fills */
 
   /* ink */
-  --color-ink: #141413;
-  --color-ink-soft: #6f6a5f;
-  --color-ink-faint: #757063;
+  --color-ink: #1f2329;
+  --color-ink-soft: #565c66;
+  --color-ink-faint: #6b7280;
 
   /* lines: hair for dividers inside a group, rule for real borders */
-  --color-hair: #e2ddd1;
-  --color-rule: #cfc8b8;
+  --color-hair: #e5e6eb;
+  --color-rule: #d0d3d6;
 
   /* accent */
-  --color-olive: #5a6247;
-  --color-olive-deep: #454b36;
-  --color-olive-tint: #edefe6;
+  --color-brand: #2b5fd9;
+  --color-brand-deep: #1e4bb8;
+  --color-brand-tint: #e9eefb;
 
-  /* semantic — separate from the accent, never used for decoration */
-  --color-up: #47624c;
-  --color-up-tint: #e9efe8;
-  --color-down: #94503f;
-  --color-down-tint: #f7eae5;
-  --color-warn: #8a6a2b;
-  --color-warn-tint: #f6efdf;
+  /* market direction — default 红涨绿跌 (A-share convention). Flipped
+     wholesale by `html[data-gains="west"]` below; the classes never change. */
+  --color-up: #d13438;
+  --color-up-tint: #fae9e9;
+  --color-down: #0b8054;
+  --color-down-tint: #e6f4ee;
+
+  /* status — separate from direction, never used for decoration */
+  --color-good: #0b8054;
+  --color-good-tint: #e6f4ee;
+  --color-bad: #d13438;
+  --color-bad-tint: #fae9e9;
+  --color-warn: #b45309;
+  --color-warn-tint: #fdf3e3;
+
+  /* celebrations only: goal reached, the yearly report's cover */
+  --color-festive: #d4380d;
+
+  /* Member avatars: identity colours, six slots plus the shared household.
+     By member id (see members.ts) so a chip keeps its colour wherever it
+     appears. White letters sit on all seven; every pair passes AA for the
+     bold one-character mark they carry. */
+  --color-kin-1: #2b5fd9;
+  --color-kin-2: #0e7c66;
+  --color-kin-3: #b45309;
+  --color-kin-4: #7c3aed;
+  --color-kin-5: #c2185b;
+  --color-kin-6: #0e7490;
+  --color-kin-shared: #6b7280;
 
   /* Chart series identity. Three slots in FIXED order, assigned in sequence
      and never cycled — a 4th series folds into "Other" or faces out into
-     small multiples instead of inventing a hue.
+     small multiples instead of inventing a hue. Blue · green · amber stay
+     separable under the common colour-vision deficiencies. Single-series
+     charts use the brand accent instead — with one series colour does no
+     identity work. */
+  --color-chart-1: #2b5fd9;
+  --color-chart-2: #00b365;
+  --color-chart-3: #f59a23;
+}
 
-     Validated with the dataviz palette checker against surface #FFFDF9:
-     all six checks PASS on both the adjacent and the all-pairs pairlists
-     (worst all-pairs CVD ΔE 8.3 protan, normal-vision 16.3, contrast ≥ 3:1).
-     Data marks carry more chroma than the UI chrome on purpose: the muted
-     chrome hues measured below the 0.10 chroma floor, i.e. they read as grey
-     and stop telling series apart. Single-series charts use the olive accent
-     instead — with one series colour does no identity work. */
-  --color-chart-1: #2a5fa8;
-  --color-chart-2: #b8801a;
-  --color-chart-3: #8a3f7a;
+/* 涨跌配色 — the two conventions, as re-pointings of the two direction
+   tokens and nothing else: status colours do not move, so a refusal stays
+   red and a success stays green in both settings.
+
+   Written against any element with the attribute, not just `html`, so the
+   Profile page can show each option's colours beside its name (`data-gains`
+   on a preview span flips just that span). `gains.ts` sets the attribute on
+   `<html>`; the bare `@theme` values above are the `cn` default. */
+[data-gains="west"] {
+  --color-up: #0b8054;
+  --color-up-tint: #e6f4ee;
+  --color-down: #d13438;
+  --color-down-tint: #fae9e9;
+}
+[data-gains="cn"] {
+  --color-up: #d13438;
+  --color-up-tint: #fae9e9;
+  --color-down: #0b8054;
+  --color-down-tint: #e6f4ee;
 }
 
 @layer base {
@@ -125,6 +153,8 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* A phone's browser may not shrink text on rotate. */
+    -webkit-text-size-adjust: 100%;
   }
 
   /* Money and quantities must line up in columns. */
@@ -134,9 +164,9 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Keyboard focus stays visible everywhere (the olive ring is the accent). */
+  /* Keyboard focus stays visible everywhere (the brand ring is the accent). */
   :focus-visible {
-    outline: 2px solid var(--color-olive);
+    outline: 2px solid var(--color-brand);
     outline-offset: 2px;
   }
 }
@@ -145,5 +175,42 @@
   /* Opt-in tabular figures outside tables (stat cards, inline totals). */
   .tnum {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* The member avatar's seven grounds, written out by hand. The chip picks
+     its class from a member id at RUNTIME (`bg-${memberTint(id)}`), and
+     Tailwind builds a utility only for a name it can see written down
+     somewhere — so these are written down here, once, and the palette stays
+     beside every other colour in this file. */
+  .bg-kin-1 {
+    background-color: var(--color-kin-1);
+  }
+  .bg-kin-2 {
+    background-color: var(--color-kin-2);
+  }
+  .bg-kin-3 {
+    background-color: var(--color-kin-3);
+  }
+  .bg-kin-4 {
+    background-color: var(--color-kin-4);
+  }
+  .bg-kin-5 {
+    background-color: var(--color-kin-5);
+  }
+  .bg-kin-6 {
+    background-color: var(--color-kin-6);
+  }
+  .bg-kin-shared {
+    background-color: var(--color-kin-shared);
+  }
+
+  /* The display face is a HEAVY SANS in this direction, not a serif: a
+     Chinese heading in Songti beside a Latin one in Instrument Serif read as
+     two different products. The family comes from the `--font-display` token;
+     the weight the old serif carried by its own heft is added here, so every
+     `font-display` call site stays unchanged. */
+  .font-display {
+    font-weight: 600;
+    letter-spacing: -0.01em;
   }
 }

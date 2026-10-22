@@ -13,6 +13,9 @@ import {
   type TaxSettingsRead,
 } from "../api/tax";
 import { getBaseCurrency, saveBaseCurrency, type BaseCurrencySetting } from "../api/baseCurrency";
+import { getMembers, type Member } from "../api/members";
+import { getGains, setGains } from "../gains";
+import MembersSection from "./MembersSection";
 import { choicesOf, isVisible, topicsOf, unshownAnswer } from "./questionnaire";
 import { askedAs, othersOf, toSave } from "./profileAnswers";
 import { explainWords, optionWords, questionWords, topicWords } from "./surveyText";
@@ -66,6 +69,9 @@ export default function Profile() {
      the one save here that asks the rate feed for something. */
   const [base, setBase] = useState<BaseCurrencySetting | null>(null);
   const [pickedBase, setPickedBase] = useState("");
+  // The household (PRD v3 §4.1). Edited by its own section and re-read on its
+  // own: adding someone is a fact, not a pending change behind the Save below.
+  const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,12 +85,14 @@ export default function Profile() {
     setLoading(true);
     setError(null);
     try {
-      const [asked, existing, taxes, currentBase] = await Promise.all([
+      const [asked, existing, taxes, currentBase, memberList] = await Promise.all([
         getSurveyQuestions(),
         getSurvey(),
         getTaxSettings(),
         getBaseCurrency(),
+        getMembers(),
       ]);
+      setMembers(memberList);
       setQuestions(asked);
       setBase(currentBase);
       setPickedBase(currentBase.base_currency);
@@ -151,7 +159,7 @@ export default function Profile() {
         <p className="text-sm text-ink-soft">{tr("profile.intro")}</p>
       </div>
 
-      {error && <p className="text-down">{error}</p>}
+      {error && <p className="text-bad">{error}</p>}
 
       {topicsOf(questions).map((topic) => {
         const qs = questions.filter((q) => q.topic === topic && isVisible(q, answers));
@@ -223,11 +231,22 @@ export default function Profile() {
         }}
       />
 
+      <GainsSection />
+
+      <MembersSection
+        members={members}
+        onChanged={() => {
+          void getMembers()
+            .then(setMembers)
+            .catch((err) => setError(apiError(err, tr("common.backendDown"))));
+        }}
+      />
+
       <div className="flex items-center gap-3">
         <button onClick={save} disabled={saving} className={btnClass}>
           {saving ? tr("profile.saving") : tr("profile.save")}
         </button>
-        {saved && <span className="text-sm text-up">{tr("profile.saved")}</span>}
+        {saved && <span className="text-sm text-good">{tr("profile.saved")}</span>}
       </div>
     </div>
   );
@@ -277,7 +296,7 @@ function OtherAnswers({
             <button
               type="button"
               onClick={() => onDelete(a.question_key)}
-              className="shrink-0 rounded-sm px-3 py-2 text-sm text-ink-soft transition hover:text-down"
+              className="shrink-0 rounded-sm px-3 py-2 text-sm text-ink-soft transition hover:text-bad"
             >
               {tr("common.delete")}
             </button>
@@ -294,7 +313,7 @@ function OtherAnswers({
                 <button
                   type="button"
                   onClick={() => onRestore(a.question_key)}
-                  className="text-olive underline-offset-2 hover:underline"
+                  className="text-brand underline-offset-2 hover:underline"
                 >
                   {tr("profile.keepIt")}
                 </button>
@@ -356,6 +375,47 @@ function BaseCurrencySection({
           {tr("profile.baseOnlyOne", { current })}
         </p>
       )}
+    </section>
+  );
+}
+
+/* 涨跌配色: which way gains and losses are coloured. It commits on press —
+   like the language toggle, and unlike the rest of this page: a preference
+   about colour has nothing to save, and waiting behind the page's one button
+   would only hide the effect being chosen. The preview beside each option
+   carries its own `data-gains`, so it shows THAT option's colours even while
+   the other one is in force. */
+function GainsSection() {
+  const tr = useT();
+  const [gains, setGainsState] = useState(getGains());
+  return (
+    <section className={cardClass + " space-y-3 p-5"}>
+      <h3 className="text-sm font-semibold text-ink">{tr("profile.gainsTitle")}</h3>
+      <p className="text-sm text-ink-soft">{tr("profile.gainsHelp")}</p>
+      <div role="group" aria-label={tr("profile.gainsTitle")} className="flex flex-wrap gap-2">
+        {(["cn", "west"] as const).map((g) => (
+          <button
+            key={g}
+            type="button"
+            onClick={() => {
+              setGains(g);
+              setGainsState(g);
+            }}
+            aria-pressed={gains === g}
+            className={
+              "flex items-center gap-2 rounded-xl border px-4 py-2 text-sm transition " +
+              (gains === g ? "border-brand text-brand" : "border-rule text-ink-soft hover:text-ink")
+            }
+          >
+            <span data-gains={g} className="tnum text-xs">
+              <span className="text-up">+1.2%</span>{" "}
+              <span className="text-down">−1.2%</span>
+            </span>
+            {tr(g === "cn" ? "profile.gainsCn" : "profile.gainsWest")}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-ink-faint">{tr("profile.gainsNote")}</p>
     </section>
   );
 }
@@ -440,7 +500,7 @@ function TaxSection({
           <button
             type="button"
             onClick={() => onUseDefault(match)}
-            className="mt-2 rounded-sm border border-olive px-3 py-1.5 text-sm text-olive-deep transition hover:bg-olive-tint"
+            className="mt-2 rounded-sm border border-brand px-3 py-1.5 text-sm text-brand-deep transition hover:bg-brand-tint"
           >
             {tr("profile.taxUseThese")}
           </button>
@@ -531,7 +591,7 @@ function QuestionField({
               className={
                 "rounded-sm border px-3 py-1.5 text-sm capitalize transition " +
                 (value === opt
-                  ? "border-olive bg-olive-tint text-olive-deep"
+                  ? "border-brand bg-brand-tint text-brand-deep"
                   : "border-rule text-ink-soft hover:bg-ground")
               }
             >

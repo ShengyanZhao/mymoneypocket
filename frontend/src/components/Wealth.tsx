@@ -27,6 +27,8 @@ import {
 import { getListingCurrencies, getQuote, refreshHoldingPrice } from "../api/prices";
 import { getPortfolio, type PortfolioRow } from "../api/portfolio";
 import type { ArrivedPosition, OmittedPosition } from "../api/dashboard";
+import { assignInstitution, getMembers, type Member } from "../api/members";
+import { MemberPicker } from "./MemberPicker";
 import { OmissionsNotice } from "./OmissionsNotice";
 import { InstrumentPicker } from "./InstrumentPicker";
 import type { Focus } from "../nav";
@@ -197,6 +199,12 @@ function InstitutionsLevel({ onSelect }: { onSelect: (i: Institution) => void })
   const [editId, setEditId] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [type, setType] = useState("");
+  // Whose account this is (PRD v3 §4.1), and what the last save stamped: an
+  // account's attribution reaches its UNNAMED history too, and the reader is
+  // told how many rows it moved rather than left to wonder.
+  const [members, setMembers] = useState<Member[]>([]);
+  const [memberId, setMemberId] = useState<number | null>(null);
+  const [assigned, setAssigned] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -207,7 +215,9 @@ function InstitutionsLevel({ onSelect }: { onSelect: (i: Institution) => void })
     setLoading(true);
     setError(null);
     try {
-      setItems(await getInstitutions());
+      const [list, people] = await Promise.all([getInstitutions(), getMembers()]);
+      setItems(list);
+      setMembers(people);
     } catch (err) {
       setError(apiError(err, tr("wealth.backendUnreachable")));
     } finally {
@@ -219,12 +229,14 @@ function InstitutionsLevel({ onSelect }: { onSelect: (i: Institution) => void })
     setEditId(null);
     setName("");
     setType("");
+    setMemberId(null);
   }
 
   function startEdit(it: Institution) {
     setEditId(it.id);
     setName(it.name);
     setType(it.type ?? "");
+    setMemberId(it.member_id ?? null);
   }
 
   async function submit(e: FormEvent) {
@@ -236,10 +248,27 @@ function InstitutionsLevel({ onSelect }: { onSelect: (i: Institution) => void })
     }
     setSubmitting(true);
     setFormError(null);
-    const payload = { name: name.trim(), type: type.trim() || null };
+    const payload = { name: name.trim(), type: type.trim() || null, member_id: memberId };
     try {
-      if (editId != null) await updateInstitution(editId, payload);
-      else await createInstitution(payload);
+      if (editId != null) {
+        await updateInstitution(editId, payload);
+        // The account's attribution reaches its unnamed history as well: rows
+        // that already name somebody keep their name (crud.assign_institution),
+        // and what changed is said below rather than silently absorbed.
+        const result = await assignInstitution(editId, { member_id: memberId });
+        const who = memberId == null ? null : (members.find((m) => m.id === memberId)?.name ?? null);
+        setAssigned(
+          memberId == null
+            ? null
+            : result.stamped > 0
+              ? tr("members.assigned", { count: result.stamped, name: who ?? "" })
+              : tr("members.assignedNone"),
+        );
+      } else {
+        // A new account has no history to stamp: its payload already says
+        // whose it is.
+        await createInstitution(payload);
+      }
       reset();
       await load();
     } catch (err) {
@@ -264,12 +293,18 @@ function InstitutionsLevel({ onSelect }: { onSelect: (i: Institution) => void })
   return (
     <Section title={tr("wealth.institutions")}>
       <form onSubmit={submit} className="flex flex-wrap gap-2">
+        {members.length > 0 && (
+          <div className="w-full">
+            <MemberPicker members={members} value={memberId} onChange={setMemberId} />
+          </div>
+        )}
         <input className={inputClass} aria-label={tr("wealth.nameOfBankOrBroker")} {...marks(INSTITUTION, "name")} value={name} onChange={(e) => setName(e.target.value)} />
         <input className={inputClass} placeholder={tr("wealth.typePlaceholder")} value={type} onChange={(e) => setType(e.target.value)} />
         <button className={btnClass} disabled={submitting}>{submitting ? "..." : editId != null ? tr("common.save") : tr("common.add")}</button>
         {editId != null && <CancelButton onClick={reset} />}
       </form>
-      {formError && <p className="text-down">{formError}</p>}
+      {formError && <p className="text-bad">{formError}</p>}
+      {assigned && <p className="text-sm text-good">{assigned}</p>}
       <RowsOrEmpty loading={loading} error={error} empty={items.length === 0} emptyText={tr("wealth.noInstitutions")}>
         {items.map((it) => (
           <Row
@@ -555,7 +590,7 @@ function SnapshotsLevel({
   // A refusal is red. The same fact, stated before the reader has pressed
   // anything, is not a failure and must not be dressed as one.
   const noticeClass = formError
-    ? "border-l-2 border-down bg-down-tint px-3 py-2 text-xs text-down"
+    ? "border-l-2 border-bad bg-bad-tint px-3 py-2 text-xs text-bad"
     : "border-l-2 border-rule bg-surface px-3 py-2 text-xs text-ink-soft";
 
   useEffect(() => {
@@ -827,7 +862,7 @@ ${tr("wealth.dialogReported")}
         </button>
       </form>
       {prefillNote && (
-        <p className="border-l-2 border-olive bg-olive/5 px-3 py-2 text-xs text-ink-soft">
+        <p className="border-l-2 border-brand bg-brand/5 px-3 py-2 text-xs text-ink-soft">
           {prefillNote}
         </p>
       )}
@@ -907,7 +942,7 @@ function SituationDetail({ snapshot }: { snapshot: Snapshot }) {
   const isPast = ageDays > 0;
 
   if (loading) return <p className="text-ink-soft">{tr("common.loading")}</p>;
-  if (error) return <p className="text-down">{error}</p>;
+  if (error) return <p className="text-bad">{error}</p>;
 
   return (
     <div className="space-y-4">
@@ -1366,7 +1401,7 @@ function BucketSection({
             aria-expanded={false}
             aria-label={tr("wealth.addIsin")}
             onClick={() => setIsinOpen(true)}
-            className="rounded-sm border border-rule px-2 py-2 text-xs text-ink-soft transition hover:border-olive hover:text-olive"
+            className="rounded-sm border border-rule px-2 py-2 text-xs text-ink-soft transition hover:border-brand hover:text-brand"
           >
             + ISIN
           </button>
@@ -1398,7 +1433,7 @@ function BucketSection({
               onClick={deriveQuantity}
               disabled={fetchingPrice || !symbol.trim() || !value}
               title={tr("wealth.toUnitsTitle")}
-              className="rounded-sm border border-rule px-2 py-2 text-xs text-ink-soft transition hover:border-olive hover:text-olive disabled:opacity-50"
+              className="rounded-sm border border-rule px-2 py-2 text-xs text-ink-soft transition hover:border-brand hover:text-brand disabled:opacity-50"
             >
               {fetchingPrice ? "…" : tr("wealth.toUnits")}
             </button>
@@ -1413,7 +1448,7 @@ function BucketSection({
               onClick={() => fetchPrice(true)}
               disabled={fetchingPrice || !symbol.trim()}
               title={tr("wealth.fetchPriceTitle")}
-              className="rounded-sm border border-rule px-2 py-2 text-xs text-ink-soft transition hover:border-up hover:text-up disabled:opacity-50"
+              className="rounded-sm border border-rule px-2 py-2 text-xs text-ink-soft transition hover:border-brand hover:text-brand disabled:opacity-50"
             >
               {fetchingPrice ? "…" : tr("wealth.live")}
             </button>
@@ -1440,9 +1475,9 @@ function BucketSection({
           {tickerCost}
         </p>
       )}
-      {pickNote && <p className="mb-2 text-xs text-olive">{pickNote}</p>}
-      {priceNote && <p className="mb-2 text-xs text-up">{priceNote}</p>}
-      {error && <p className="mb-2 text-down">{error}</p>}
+      {pickNote && <p className="mb-2 text-xs text-brand">{pickNote}</p>}
+      {priceNote && <p className="mb-2 text-xs text-good">{priceNote}</p>}
+      {error && <p className="mb-2 text-bad">{error}</p>}
       {holdings.length > 0 && (
         <ul className="divide-y divide-hair rounded-sm border border-hair">
           {holdings.map((h) => (

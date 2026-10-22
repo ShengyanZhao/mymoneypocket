@@ -29,10 +29,24 @@ import {
 import { CancelButton } from "./ui";
 import { getBaseCurrency } from "../api/baseCurrency";
 import { DatedAmountEditor } from "./DatedAmountEditor";
+import LoanPlan from "./LoanPlan";
 import { useReopened } from "./reopen";
 import { BALANCE, DEBT, marks, refusal } from "./required";
 
-const KINDS = ["", "mortgage", "personal_loan", "auto_loan", "student_loan", "credit_card", "other"];
+const KINDS = [
+  "",
+  "mortgage",
+  "mortgage_cn",
+  "personal_loan",
+  "auto_loan",
+  "student_loan",
+  "credit_card",
+  "credit_card_installment",
+  "huabei",
+  "baitiao",
+  "consumer_loan",
+  "other",
+];
 
 /** A stored kind code in the reader's words ("personal_loan" -> "personal
     loan" in English, 个人贷款 in Chinese); an unknown one is shown as stored
@@ -67,7 +81,18 @@ export default function Debts({
       {!liability ? (
         <DebtsLevel onSelect={onLiability} />
       ) : (
-        <BalancesLevel liability={liability} />
+        <>
+          {/* The plan beside the bank's own balances (PRD v3 §4.4): what the
+              schedule says, what the reader recorded, and the question about
+              paying early — then the dated balances themselves. */}
+          <LoanPlan
+            liability={liability}
+            onChanged={() => {
+              void getLiability(liability.id).then(onLiability);
+            }}
+          />
+          <BalancesLevel liability={liability} />
+        </>
       )}
     </div>
   );
@@ -213,7 +238,7 @@ function DebtsLevel({ onSelect }: { onSelect: (l: Liability) => void }) {
         <button className={btnClass} disabled={submitting}>{submitting ? "..." : editId != null ? tr("common.save") : tr("common.add")}</button>
         {editId != null && <CancelButton onClick={reset} />}
       </form>
-      {formError && <p className="text-down">{formError}</p>}
+      {formError && <p className="text-bad">{formError}</p>}
       <RowsOrEmpty loading={loading} error={error} empty={items.length === 0} emptyText={tr("debts.noDebts")}>
         {items.map((l) => (
           <Row

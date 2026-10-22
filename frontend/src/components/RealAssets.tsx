@@ -175,7 +175,7 @@ function AssetsLevel({ onSelect }: { onSelect: (a: RealAsset) => void }) {
         <button className={btnClass} disabled={submitting}>{submitting ? "..." : editId != null ? tr("common.save") : tr("common.add")}</button>
         {editId != null && <CancelButton onClick={reset} />}
       </form>
-      {formError && <p className="text-down">{formError}</p>}
+      {formError && <p className="text-bad">{formError}</p>}
       <RowsOrEmpty loading={loading} error={error} empty={items.length === 0} emptyText={tr("real.noRealAssets")}>
         {items.map((a) => (
           <Row key={a.id} onClick={() => onSelect(a)} onEdit={() => startEdit(a)} note={a.notes} onDelete={() => remove(a)} title={a.name} badge={categoryLabel(a.category)} subtitle={a.currency} />

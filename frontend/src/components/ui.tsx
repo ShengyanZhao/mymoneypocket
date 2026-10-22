@@ -7,15 +7,16 @@ import { t, useT } from "../i18n/index.ts";
 
 // Shared UI building blocks + style constants, reused across feature tabs.
 
-// Direction "Editoriale": crisp 1px edges, warm surfaces, olive accent.
-// No soft shadows: depth comes from hairlines, as in the design specimen.
-// The exception is what floats above the page (the instrument picker's list,
-// a "?"'s panel), where a hairline alone cannot say which surface is on top.
+// Direction "Clean-Ledger CN": white cards on a cool grey ground, 12px
+// corners, one whisper of shadow to lift a card off the page. The cards are
+// the structure now — the ruled-ledger hairlines survive only inside dense
+// tables, where a line is genuinely how a ledger reads.
 export const inputClass =
-  "rounded-sm border border-rule bg-surface px-3 py-2 text-sm outline-none transition focus:border-olive focus:ring-1 focus:ring-olive";
+  "rounded-xl border border-rule bg-surface px-3 py-2 text-base outline-none transition focus:border-brand focus:ring-1 focus:ring-brand sm:text-sm";
 export const btnClass =
-  "rounded-sm bg-olive px-4 py-2 text-sm font-medium tracking-wide text-white transition hover:bg-olive-deep disabled:opacity-50";
-export const cardClass = "rounded-sm border border-rule bg-surface";
+  "rounded-xl bg-brand px-5 py-2.5 text-sm font-medium text-white transition hover:bg-brand-deep disabled:opacity-50";
+export const cardClass =
+  "rounded-xl border border-hair bg-surface shadow-[0_1px_3px_rgba(31,35,41,0.06)]";
 
 /* The id of the one `<datalist>` of currency codes, rendered once in the app
    shell and referenced by every currency box through `list=`. Shared here
@@ -26,7 +27,7 @@ export const CURRENCY_LIST = "currency-codes";
 // The reader's locale and the per-currency formatter live in ./money, which
 // has no React in it; re-exported here so the import every page already has
 // keeps working.
-export { locale, money } from "./money";
+export { compact, locale, money } from "./money";
 
 /* CONVERTED figures — every total the backend has already turned into the
    base currency — are printed in the base THE PAYLOAD DECLARES:
@@ -122,7 +123,7 @@ export const mdComponents: Components = {
   ul: ({ node: _n, ...p }) => <ul className="my-2 list-disc space-y-1 pl-5" {...p} />,
   ol: ({ node: _n, ...p }) => <ol className="my-2 list-decimal space-y-1 pl-5" {...p} />,
   strong: ({ node: _n, ...p }) => <strong className="font-semibold text-ink" {...p} />,
-  a: ({ node: _n, ...p }) => <a className="text-olive underline" target="_blank" rel="noreferrer" {...p} />,
+  a: ({ node: _n, ...p }) => <a className="text-brand underline" target="_blank" rel="noreferrer" {...p} />,
   blockquote: ({ node: _n, ...p }) => (
     <blockquote className="my-3 rounded-r-lg border-l-4 border-warn bg-warn-tint px-3 py-2 text-ink" {...p} />
   ),
@@ -188,7 +189,7 @@ export function Breadcrumb({ items }: { items: Crumb[] }) {
             aria-current={c.active ? "page" : undefined}
             className={
               "rounded px-1.5 py-0.5 " +
-              (c.active ? "font-semibold text-ink" : "hover:text-olive")
+              (c.active ? "font-semibold text-ink" : "hover:text-brand")
             }
           >
             {c.label}
@@ -340,8 +341,8 @@ export function Explainer({ question, text }: Explain) {
         aria-controls={id}
         onClick={() => setOpen((o) => nextOpen(o, { kind: "press" }))}
         className={
-          "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-olive " +
-          (open ? "border-olive text-olive" : "border-rule text-ink-soft hover:border-olive hover:text-olive")
+          "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand " +
+          (open ? "border-brand text-brand" : "border-rule text-ink-soft hover:border-brand hover:text-brand")
         }
       >
         ?
@@ -428,7 +429,7 @@ export function RowsOrEmpty({
 }) {
   const tr = useT();
   if (loading) return <p className="text-ink-soft">{tr("common.loading")}</p>;
-  if (error) return <p className="text-down">{error}</p>;
+  if (error) return <p className="text-bad">{error}</p>;
   if (empty) return <p className="text-ink-soft">{emptyText}</p>;
   return (
     <ul className={cardClass + " divide-y divide-hair overflow-hidden"}>
@@ -487,7 +488,7 @@ export function Row({
       <div className="flex shrink-0 items-center gap-2">
         {value && <span className="tnum text-sm font-medium text-ink">{value}</span>}
         {badge && (
-          <span className="rounded-full border border-olive px-2.5 py-0.5 text-[0.65rem] uppercase tracking-wider text-olive">
+          <span className="rounded-full border border-brand px-2.5 py-0.5 text-[0.65rem] uppercase tracking-wider text-brand">
             {badge}
           </span>
         )}
@@ -513,7 +514,7 @@ export function Row({
             disabled={refreshing}
             aria-label={tr("common.refreshPrice")}
             title={tr("common.refreshPriceTitle")}
-            className="shrink-0 px-2 py-3 text-ink-faint transition hover:text-up disabled:opacity-50"
+            className="shrink-0 px-2 py-3 text-ink-faint transition hover:text-brand disabled:opacity-50"
           >
             {refreshing ? "…" : "↻"}
           </button>
@@ -523,7 +524,7 @@ export function Row({
             onClick={onEdit}
             aria-label={tr("common.edit")}
             title={tr("common.edit")}
-            className="shrink-0 px-2 py-3 text-ink-faint transition hover:text-olive"
+            className="shrink-0 px-2 py-3 text-ink-faint transition hover:text-brand"
           >
             ✎
           </button>
@@ -533,7 +534,7 @@ export function Row({
             onClick={onDelete}
             aria-label={tr("common.delete")}
             title={tr("common.delete")}
-            className="shrink-0 px-3 py-3 text-ink-faint transition hover:text-down"
+            className="shrink-0 px-3 py-3 text-ink-faint transition hover:text-bad"
           >
             ✕
           </button>

@@ -190,7 +190,7 @@ function ToolNote({ block, running }: { block: ChatToolBlock; running: boolean }
         <span className="normal-case tracking-normal text-ink-soft">{block.name}</span>
       </p>
       {block.ok === false && (
-        <p className="mt-0.5 text-xs text-down">{block.detail ?? "It did not answer."}</p>
+        <p className="mt-0.5 text-xs text-bad">{block.detail ?? "It did not answer."}</p>
       )}
     </div>
   );
@@ -225,7 +225,7 @@ function Sources({ block }: { block: ChatSourcesBlock }) {
                 href={l.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-olive underline underline-offset-2"
+                className="text-brand underline underline-offset-2"
               >
                 {l.label}
               </a>
@@ -332,7 +332,7 @@ function Card({
   // Only the one still waiting on the reader carries the accent. A settled
   // card is a record and should read as one; "Rejected" in the colour the app
   // uses for its own voice looked like approval of the opposite thing.
-  const tone = pending ? "text-olive" : block.outcome === "confirmed" ? "text-ink-soft" : "text-ink-faint";
+  const tone = pending ? "text-brand" : block.outcome === "confirmed" ? "text-ink-soft" : "text-ink-faint";
   return (
     <div className="my-3 rounded-sm border border-rule bg-surface p-3">
       <p className={"text-[0.65rem] font-medium uppercase tracking-[0.14em] " + tone}>
@@ -399,7 +399,7 @@ function Card({
             <button
               type="button"
               onClick={() => onOpenRun(block.result?.run_id as number)}
-              className="mt-1 cursor-pointer text-sm text-olive underline-offset-2 hover:underline"
+              className="mt-1 cursor-pointer text-sm text-brand underline-offset-2 hover:underline"
             >
               Read it in full ›
             </button>
@@ -420,7 +420,7 @@ function Card({
             type="button"
             disabled={busy}
             onClick={() => onDecide("confirm")}
-            className="rounded-sm bg-olive px-4 py-2 text-sm font-medium tracking-wide text-white transition hover:bg-olive-deep disabled:opacity-50"
+            className="rounded-sm bg-brand px-4 py-2 text-sm font-medium tracking-wide text-white transition hover:bg-brand-deep disabled:opacity-50"
           >
             {/* The button says what pressing it DOES, in the proposing tool's
                 own words, for the same reason the sentence above the diff comes
@@ -458,9 +458,9 @@ function EndNote({ m }: { m: Message }) {
     case "done":
       return m.model ? <p className="mt-2 text-[0.7rem] text-ink-faint">{m.model}</p> : null;
     case "error":
-      return <p className="mt-2 text-xs text-down">{m.detail ?? "The answer could not continue."}</p>;
+      return <p className="mt-2 text-xs text-bad">{m.detail ?? "The answer could not continue."}</p>;
     case "cut":
-      return <p className="mt-2 text-xs text-down">Stopped before it was finished.</p>;
+      return <p className="mt-2 text-xs text-bad">Stopped before it was finished.</p>;
     case "aborted":
       return <p className="mt-2 text-xs text-ink-faint">Stopped.</p>;
     default:
@@ -494,7 +494,7 @@ function Bubble({
     const where = m.blocks.find((b): b is ChatPageBlock => b.kind === "page");
     return (
       <div className="ml-8">
-        <div className="whitespace-pre-wrap rounded-sm bg-olive-tint px-3 py-2 text-sm text-ink">
+        <div className="whitespace-pre-wrap rounded-sm bg-brand-tint px-3 py-2 text-sm text-ink">
           {textOf(m)}
         </div>
         {where && (
@@ -607,6 +607,8 @@ export default function ChatPanel({
   page,
   onOpenRun,
   onOpenAnalyses,
+  onClose,
+  seed,
 }: {
   open: boolean;
   /** Where the reader is right now. Sent with each question at the moment it
@@ -620,6 +622,14 @@ export default function ChatPanel({
   onOpenRun: (runId: number) => void;
   /** Send the reader to the record of every run, also in the main column. */
   onOpenAnalyses: () => void;
+  /** Fold the panel away. On a desktop the rail is this control and nothing
+      else calls it; on a phone the rail is gone and the panel's own ✕ is the
+      only way back to the page. */
+  onClose: () => void;
+  /** A sentence to START from — the review card hands the chat the month it
+      just described. Lands in the draft box for the reader to finish or send
+      as it is; null means nothing was handed over. */
+  seed?: string | null;
 }) {
   const [initial] = useState(load);
   const [conversationId, setConversationId] = useState<number | null>(initial.conversationId);
@@ -627,6 +637,11 @@ export default function ChatPanel({
   const [model, setModel] = useState<string | null>(initial.model);
   const [models, setModels] = useState<ChatModels | null>(null);
   const [draft, setDraft] = useState("");
+  // Applied when the seed CHANGES: a draft already being typed is the
+  // reader's, and a panel re-rendering must not quietly replace it.
+  useEffect(() => {
+    if (seed) setDraft(seed);
+  }, [seed]);
   const [view, setView] = useState<"chat" | "history">("chat");
   const [history, setHistory] = useState<ChatConversation[] | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -953,7 +968,10 @@ export default function ChatPanel({
   // rather than reflowed. The page beside it does reflow, deliberately
   // animated over 300ms so the eye can follow the tables moving; the tables
   // themselves scroll horizontally inside their cards rather than squeezing.
-  const width = "w-[32vw] min-w-[280px] max-w-[35vw]";
+  //
+  // On a phone there is no "beside it": the panel takes the whole screen as a
+  // fixed overlay (`max-sm:` below), and its width is simply the screen's.
+  const width = "w-full sm:w-[32vw] sm:min-w-[280px] sm:max-w-[35vw]";
 
   return (
     // The aside ITSELF is the sticky element, one viewport tall, so it follows
@@ -966,7 +984,8 @@ export default function ChatPanel({
       aria-hidden={!open}
       className={
         "sticky top-0 h-screen shrink-0 self-start overflow-hidden border-r border-rule bg-surface transition-[width] duration-300 ease-in-out motion-reduce:transition-none " +
-        (open ? width : "w-0 border-r-0")
+        "max-sm:fixed max-sm:inset-0 max-sm:z-30 max-sm:h-full " +
+        (open ? width : "w-0 border-r-0 max-sm:hidden")
       }
     >
       <div className={"flex h-full flex-col " + width}>
@@ -983,11 +1002,24 @@ export default function ChatPanel({
             className={
               "ml-auto rounded-sm p-1.5 transition " +
               (view === "history"
-                ? "bg-olive-tint text-olive-deep"
+                ? "bg-brand-tint text-brand-deep"
                 : "text-ink-soft hover:bg-tint hover:text-ink")
             }
           >
             <ClockIcon />
+          </button>
+          {/* The phone's way out: there the rail is gone, so the panel has to
+              close itself. On a desktop the rail is beside it and does this. */}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close the chat"
+            title="Close the chat"
+            className="rounded-sm p-1.5 text-ink-soft transition hover:bg-tint hover:text-ink md:hidden"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" focusable="false" aria-hidden="true">
+              <path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
           </button>
         </div>
 
@@ -1004,7 +1036,7 @@ export default function ChatPanel({
             <button
               type="button"
               onClick={onOpenAnalyses}
-              className="-mx-2 mb-4 flex w-[calc(100%+1rem)] cursor-pointer items-center gap-2 rounded-sm px-2 py-2 text-left text-sm text-olive transition hover:bg-tint"
+              className="-mx-2 mb-4 flex w-[calc(100%+1rem)] cursor-pointer items-center gap-2 rounded-sm px-2 py-2 text-left text-sm text-brand transition hover:bg-tint"
             >
               Past analyses
               <span aria-hidden="true" className="ml-auto text-ink-faint">
@@ -1014,7 +1046,7 @@ export default function ChatPanel({
             <p className="mb-3 text-[0.65rem] font-medium uppercase tracking-[0.14em] text-ink-soft">
               Past conversations
             </p>
-            {historyError && <p className="text-sm text-down">{historyError}</p>}
+            {historyError && <p className="text-sm text-bad">{historyError}</p>}
             {history === null && !historyError && <p className="text-sm text-ink-soft">Loading…</p>}
             {history !== null && history.length === 0 && (
               <p className="text-sm text-ink-soft">Nothing yet. Ask something and it will be kept here.</p>
@@ -1035,7 +1067,7 @@ export default function ChatPanel({
                         aria-hidden="true"
                         className={
                           "h-1.5 w-1.5 shrink-0 rounded-full " +
-                          (c.id === conversationId ? "bg-olive" : "bg-transparent")
+                          (c.id === conversationId ? "bg-brand" : "bg-transparent")
                         }
                       />
                       <span className="min-w-0 flex-1">
@@ -1060,7 +1092,7 @@ export default function ChatPanel({
                       onClick={() => void forget(c)}
                       aria-label="Delete this conversation"
                       title="Delete this conversation"
-                      className="shrink-0 cursor-pointer px-2 py-2 text-ink-faint transition hover:text-down"
+                      className="shrink-0 cursor-pointer px-2 py-2 text-ink-faint transition hover:text-bad"
                     >
                       ✕
                     </button>
@@ -1092,7 +1124,7 @@ export default function ChatPanel({
                       <button
                         type="button"
                         onClick={() => void send(q)}
-                        className="cursor-pointer text-left text-sm text-olive underline-offset-2 hover:underline"
+                        className="cursor-pointer text-left text-sm text-brand underline-offset-2 hover:underline"
                       >
                         {q}
                       </button>
@@ -1119,7 +1151,7 @@ export default function ChatPanel({
             the model as a pill, the send arrow on the right. One object to
             look at, not a field with loose buttons under it. */}
         <form onSubmit={onSubmit} className="px-4 pb-4 pt-2">
-          <div className="rounded-sm border border-rule bg-surface transition focus-within:border-olive focus-within:ring-1 focus-within:ring-olive">
+          <div className="rounded-sm border border-rule bg-surface transition focus-within:border-brand focus-within:ring-1 focus-within:ring-brand">
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -1148,7 +1180,7 @@ export default function ChatPanel({
                 disabled={!models}
                 aria-label="Model"
                 title={currentNote}
-                className="min-w-0 max-w-[60%] truncate rounded-full border border-hair bg-transparent px-2.5 py-1 text-xs text-ink-soft outline-none transition hover:border-rule hover:text-ink focus:border-olive"
+                className="min-w-0 max-w-[60%] truncate rounded-full border border-hair bg-transparent px-2.5 py-1 text-xs text-ink-soft outline-none transition hover:border-rule hover:text-ink focus:border-brand"
               >
                 {models ? (
                   models.models.map((m) => (
@@ -1177,7 +1209,7 @@ export default function ChatPanel({
                   disabled={!draft.trim()}
                   aria-label="Send"
                   title="Send (Enter)"
-                  className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-olive text-white transition hover:bg-olive-deep disabled:opacity-40 disabled:hover:bg-olive"
+                  className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-brand text-white transition hover:bg-brand-deep disabled:opacity-40 disabled:hover:bg-brand"
                 >
                   <ArrowUpIcon />
                 </button>

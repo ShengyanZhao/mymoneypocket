@@ -21,6 +21,8 @@ from app.i18n import LocaleMiddleware
 from app.routers import (
     accumulation_plans,
     cash_anchors,
+    bills,
+    budgets,
     cash_entries,
     chain,
     chat,
@@ -32,6 +34,7 @@ from app.routers import (
     income_sources,
     institutions,
     liabilities,
+    members,
     prices,
     real_assets,
     settings,
@@ -106,11 +109,14 @@ app.include_router(snapshots.router)
 app.include_router(holdings.router)
 app.include_router(real_assets.router)
 app.include_router(liabilities.router)
+app.include_router(members.router)
 app.include_router(prices.router)
 app.include_router(instruments.router)
 app.include_router(income_sources.router)
 app.include_router(expenses.router)
 app.include_router(cash_anchors.router)
+app.include_router(bills.router)
+app.include_router(budgets.router)
 app.include_router(cash_entries.router)
 app.include_router(transfers.router)
 app.include_router(dashboard.router)

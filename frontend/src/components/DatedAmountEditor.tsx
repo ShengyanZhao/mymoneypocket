@@ -179,7 +179,7 @@ export function DatedAmountEditor<T extends { id: number; note: string | null },
       </form>
 
       {ed.error && (
-        <p className="text-down">{ed.error}</p>
+        <p className="text-bad">{ed.error}</p>
       )}
 
       <RowsOrEmpty

@@ -414,6 +414,24 @@ def _latest_balance_by_liability(
     )
 
 
+def _inst_member(db: Session) -> dict[int, int | None]:
+    """Every account's attribution ({institution id: member id}) in one query,
+    shared by the walks that need it."""
+    return dict(
+        db.execute(select(models.Institution.id, models.Institution.member_id)).all()
+    )
+
+
+def member_of(db: Session, model, obj_id: int) -> int | None:
+    """Whose a standalone row (a real asset, a debt) is; None = 共同.
+
+    One `db.get` per row in a walk that already reads every row's parent for
+    its currency — the number of these is the number of houses and mortgages
+    on record."""
+    obj = db.get(model, obj_id) if obj_id is not None else None
+    return obj.member_id if obj is not None else None
+
+
 # --- Summary / allocation / series ----------------------------------------
 
 
@@ -742,19 +760,55 @@ def compute_summary(db: Session, as_of: datetime.date | None = None) -> dict:
     unaccounted = _unaccounted(db, conv)
     investments_total = sum(p.current_value for p in held)
     at_market = sum(p.current_value for p in held if p.is_priced)
-    cash_total = _cash_total(db, as_of, conv)
+    # One walk of the register, summed AND bucketed by whose it is. Never a
+    # second trip through `conv`: the converter COUNTS what it cannot convert
+    # and a second trip would report each such row twice.
+    cash_by: dict[int | None, float] = {}
+    for pos in compute_all_cash_positions(db, as_of, conv):
+        key = _inst_member(db).get(pos["institution_id"])
+        cash_by[key] = cash_by.get(key, 0.0) + pos["projected"]
+    cash_total = sum(cash_by.values())
     financial_total = investments_total + cash_total
     # A valuation and a balance are in their PARENT's currency — the asset's,
     # the debt's — so the parents' currencies are read once for the lot.
     asset_ccy, debt_ccy = _parent_currencies(db)
-    real_total = sum(
-        conv.to_base_or_as_stored(v.value, asset_ccy.get(v.real_asset_id))
-        for v in real_latest.values()
-    )
-    liabilities_total = sum(
-        conv.to_base_or_as_stored(b.balance, debt_ccy.get(b.liability_id))
-        for b in liab_latest.values()
-    )
+    real_by: dict[int | None, float] = {}
+    for v in real_latest.values():
+        value = conv.to_base_or_as_stored(v.value, asset_ccy.get(v.real_asset_id))
+        key = member_of(db, models.RealAsset, v.real_asset_id)
+        real_by[key] = real_by.get(key, 0.0) + value
+    real_total = sum(real_by.values())
+    liab_by: dict[int | None, float] = {}
+    for b in liab_latest.values():
+        value = conv.to_base_or_as_stored(b.balance, debt_ccy.get(b.liability_id))
+        key = member_of(db, models.Liability, b.liability_id)
+        liab_by[key] = liab_by.get(key, 0.0) + value
+    liabilities_total = sum(liab_by.values())
+
+    # Whose each part of the same computation is (PRD v3 §4.1). The buckets
+    # merge the per-member sums collected during the ONE conversion above, so
+    # the slices plus the shared one add back to `net_worth` exactly — the
+    # split is a second reading of one computation, never a second one.
+    members = {m.id: m for m in db.scalars(select(models.Member))}
+    inst_member = _inst_member(db)
+    worth_by: dict[int | None, float] = {}
+    for p in held:
+        key = inst_member.get(p.institution_id)
+        worth_by[key] = worth_by.get(key, 0.0) + p.current_value
+    for part in (cash_by, real_by):
+        for key, value in part.items():
+            worth_by[key] = worth_by.get(key, 0.0) + value
+    for key, value in liab_by.items():
+        worth_by[key] = worth_by.get(key, 0.0) - value
+    by_member = [
+        {
+            "member_id": mid,
+            "name": members[mid].name if mid in members else None,
+            "role": members[mid].role if mid in members else None,
+            "net_worth": worth_by.get(mid, 0.0),
+        }
+        for mid in [*members, None]
+    ]
 
     dates = [s.date for s in fin_latest.values()]
     dates += [v.date for v in real_latest.values()]
@@ -797,6 +851,7 @@ def compute_summary(db: Session, as_of: datetime.date | None = None) -> dict:
         "real_assets": db.scalar(select(func.count()).select_from(models.RealAsset)),
         "liabilities": db.scalar(select(func.count()).select_from(models.Liability)),
         "as_of": as_of_data,
+        "by_member": by_member,
     }
 
 
@@ -1464,6 +1519,27 @@ def compute_flows_in_force(db: Session, on: str) -> dict:
     monthly_expenses = sum(monthly(e) for e in running_out)
     monthly_net = monthly_income - monthly_expenses
 
+    # Whose the same run-rate is (PRD v3 §4.1): the slices are buckets of the
+    # very rows summed above, so they add back to the two monthly figures by
+    # construction. Null is 共同, and every member gets a row even at zero —
+    # "nothing of yours this month" is a fact worth its own line.
+    people = {m.id: m for m in db.scalars(select(models.Member))}
+    flow_in: dict[int | None, float] = {}
+    flow_out: dict[int | None, float] = {}
+    for i in running_in:
+        flow_in[i.member_id] = flow_in.get(i.member_id, 0.0) + monthly(i)
+    for e in running_out:
+        flow_out[e.member_id] = flow_out.get(e.member_id, 0.0) + monthly(e)
+    by_member = [
+        {
+            "member_id": mid,
+            "name": people[mid].name if mid in people else None,
+            "monthly_income": flow_in.get(mid, 0.0),
+            "monthly_expenses": flow_out.get(mid, 0.0),
+        }
+        for mid in [*people, None]
+    ]
+
     return {
         "on": on,
         # How many are in force, so "none" can be told from a sum of zero.
@@ -1490,4 +1566,5 @@ def compute_flows_in_force(db: Session, on: str) -> dict:
             key=lambda f: (f["end_date"], f["side"]),
         ),
         "base_currency": conv.base,
+        "by_member": by_member,
     }

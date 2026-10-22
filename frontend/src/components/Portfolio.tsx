@@ -62,6 +62,9 @@ const pctFmt = new Intl.NumberFormat(locale, {
   signDisplay: "exceptZero",
 });
 
+// Market DIRECTION, not status: the colour follows the reader's 涨跌配色
+// (`up`/`down`), which flips between the Chinese and the Western convention.
+// A gain is not "good" here — it is up.
 function toneClass(delta: number | null): string {
   if (delta == null || delta === 0) return "text-ink-soft";
   return delta > 0 ? "text-up" : "text-down";
@@ -154,7 +157,7 @@ function TaxEstimatePanel({ est, baseCurrency }: { est: TaxEstimate; baseCurrenc
   return (
     <div className={cardClass + " bg-tint p-4"}>
       <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
-        <span className="text-[0.65rem] uppercase tracking-[0.12em] text-olive">
+        <span className="text-[0.65rem] uppercase tracking-[0.12em] text-brand">
           {tr("portfolio.taxTitle")}{est.country ? ` · ${est.country}` : ""}
         </span>
         {est.total != null ? (
@@ -385,7 +388,7 @@ export default function Portfolio({
   }, [focus, loading, data, onFocused]);
 
   if (loading) return <p className="text-ink-soft">{tr("common.loading")}</p>;
-  if (error) return <p className="text-down">{error}</p>;
+  if (error) return <p className="text-bad">{error}</p>;
   if (!data) return null;
 
   // The P/L the column actually adds up to. It is NOT total_market − total_book:
@@ -527,7 +530,7 @@ export default function Portfolio({
         <div className={cardClass + " overflow-x-auto"}>
           <table className="w-full border-collapse text-left text-sm [&_td:not(:first-child)]:border-l [&_td:not(:first-child)]:border-hair [&_tbody_tr:nth-child(even)]:bg-tint">
             <thead>
-              <tr className="border-b border-rule text-[0.65rem] uppercase tracking-[0.12em] text-olive">
+              <tr className="border-b border-rule text-[0.65rem] uppercase tracking-[0.12em] text-brand">
                 <th className="px-4 py-2 font-semibold">{tr("portfolio.colAsset")}</th>
                 <th className="px-4 py-2 font-semibold">{tr("portfolio.colInstitution")}</th>
                 <th className="px-4 py-2 text-right font-semibold">{tr("portfolio.colQty")}</th>
@@ -714,7 +717,7 @@ function WeightBar({ pct }: { pct: number }) {
   return (
     <div className="h-2 w-full rounded-full bg-tint">
       <div
-        className="h-2 rounded-full bg-olive"
+        className="h-2 rounded-full bg-brand"
         style={{ width: `${Math.min(pct, 100)}%` }}
       />
     </div>
@@ -806,7 +809,7 @@ function ExposureMatrix({ cells }: { cells: MatrixCell[] }) {
                     className="px-2 py-1 text-right tabular-nums text-ink"
                     style={{
                       backgroundColor:
-                        v > 0 ? `color-mix(in oklab, var(--color-olive) ${Math.round((v / max) * 45)}%, transparent)` : undefined,
+                        v > 0 ? `color-mix(in oklab, var(--color-brand) ${Math.round((v / max) * 45)}%, transparent)` : undefined,
                     }}
                   >
                     {v > 0 ? `${v.toFixed(1)}%` : null}
@@ -866,7 +869,7 @@ function LookThroughSection() {
           </span>
         )}
       </div>
-      {error && <p className="text-down">{error}</p>}
+      {error && <p className="text-bad">{error}</p>}
       {loading && !data && (
         <p className="text-ink-soft">{tr("portfolio.loadingComposition")}</p>
       )}
@@ -888,7 +891,7 @@ function LookThroughSection() {
               </span>
             </div>
             <div className="flex h-3 w-full overflow-hidden rounded-full bg-tint">
-              <div className="h-3 bg-olive" style={{ width: `${data.coverage_pct}%` }} />
+              <div className="h-3 bg-brand" style={{ width: `${data.coverage_pct}%` }} />
               <div
                 className="h-3 flex-1"
                 style={{
@@ -916,7 +919,7 @@ function LookThroughSection() {
                 position is missing, and that is the one thing you can act on. */}
             <div className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-2">
               <div>
-                <h5 className="mb-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-olive">
+                <h5 className="mb-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-brand">
                   {tr("portfolio.lookedInside")}
                 </h5>
                 <ul className="space-y-1 text-sm">
@@ -1599,7 +1602,7 @@ function BuysSection({
           hidden={isClose}
           onClick={fillPriceOnDate}
           disabled={fetchingPrice || !symbol.trim() || !date}
-          className="rounded-sm border border-rule px-2 py-2 text-xs text-ink-soft transition hover:border-olive hover:text-olive disabled:opacity-50"
+          className="rounded-sm border border-rule px-2 py-2 text-xs text-ink-soft transition hover:border-brand hover:text-brand disabled:opacity-50"
         >
           {fetchingPrice ? "…" : tr("portfolio.priceOnDate")}
         </button>
@@ -1754,7 +1757,7 @@ function BuysSection({
                 <button
                   type="button"
                   onClick={() => correctInstead(t)}
-                  className="rounded-sm border border-rule px-2 py-1 text-xs text-ink-soft transition hover:border-olive hover:text-olive"
+                  className="rounded-sm border border-rule px-2 py-1 text-xs text-ink-soft transition hover:border-brand hover:text-brand"
                 >
                   {tr("ledger.correctThis")}
                 </button>
@@ -1764,7 +1767,7 @@ function BuysSection({
           {olderLine(offered.length) && <p className="mt-1">{olderLine(offered.length)}</p>}
         </div>
       )}
-      {correctingNote && <p className="mt-2 text-xs text-olive">{correctingNote}</p>}
+      {correctingNote && <p className="mt-2 text-xs text-brand">{correctingNote}</p>}
       {movedNote && <p className="mt-2 text-xs text-warn">{movedNote}</p>}
       {/* Shown, and then allowed through. The records being behind is the case
           the reader is here to correct, so this is a fact about the records,
@@ -1777,9 +1780,9 @@ function BuysSection({
           })}
         </p>
       )}
-      {pickNote && <p className="mb-2 text-xs text-olive">{pickNote}</p>}
-      {error && <p className="text-down">{error}</p>}
-      {priceNote && <p className="text-xs text-up">{priceNote}</p>}
+      {pickNote && <p className="mb-2 text-xs text-brand">{pickNote}</p>}
+      {error && <p className="text-bad">{error}</p>}
+      {priceNote && <p className="text-xs text-good">{priceNote}</p>}
       <RowsOrEmpty loading={false} error={null} empty={items.length === 0} emptyText={tr("ledger.noTransactions")}>
         {items.map((t) => (
           <Row
